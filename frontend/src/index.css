@@ -4,46 +4,95 @@
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: 'JetBrains Mono', SFMono-Regular, Consolas, "Liberation Mono", Menlo, Courier, monospace;
 
-  /* Theme colors - Premium Dark */
-  --bg-app: #090a0f;
-  --bg-sidebar: #0e0f16;
-  --bg-card: #151722;
-  --bg-card-hover: #1c1e2d;
-  --bg-card-active: #222538;
-  
+  /* Theme colors - Pure Black Dark Mode (Default) */
+  --bg-app: #000000;
+  --bg-app-rgb: 0, 0, 0;
+  --bg-sidebar: #050505;
+  --bg-card: #0c0c0c;
+  --bg-card-hover: #161616;
+  --bg-card-active: #202020;
+  --bg-input: rgba(255, 255, 255, 0.03);
+  --bg-column: rgba(255, 255, 255, 0.02);
+  --bg-table-header: rgba(255, 255, 255, 0.015);
+  --accent-rgb: 99, 102, 241;
+  --bg-calendar-header: rgba(255, 255, 255, 0.015);
+  --bg-shortcut: rgba(255, 255, 255, 0.05);
+  --bg-heatmap-0: rgba(255, 255, 255, 0.02);
+  --overlay-bg: rgba(0, 0, 0, 0.85);
+  --bg-graphic-color: #ffffff;
+
   --border: rgba(255, 255, 255, 0.08);
   --border-hover: rgba(255, 255, 255, 0.15);
   --border-focus: rgba(99, 102, 241, 0.5);
 
   --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-secondary: #a1a1aa;
+  --text-muted: #52525b;
   
   /* Accent Colors */
   --accent: #6366f1; /* Indigo */
-  --accent-light: rgba(99, 102, 241, 0.15);
+  --accent-light: rgba(99, 102, 241, 0.12);
   --accent-hover: #4f46e5;
   
   --success: #10b981; /* Emerald */
-  --success-light: rgba(16, 185, 129, 0.1);
+  --success-light: rgba(16, 185, 129, 0.08);
   --warning: #f59e0b; /* Amber */
-  --warning-light: rgba(245, 158, 11, 0.1);
+  --warning-light: rgba(245, 158, 11, 0.08);
   --danger: #ef4444; /* Rose */
-  --danger-light: rgba(239, 68, 68, 0.1);
+  --danger-light: rgba(239, 68, 68, 0.08);
   --info: #06b6d4; /* Cyan */
-  --info-light: rgba(6, 182, 212, 0.1);
+  --info-light: rgba(6, 182, 212, 0.08);
 
   /* Glassmorphism & Shadow */
-  --glass-bg: rgba(21, 23, 34, 0.7);
+  --glass-bg: rgba(12, 12, 12, 0.75);
   --glass-border: rgba(255, 255, 255, 0.05);
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.12);
 
   /* Transitions */
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="light"] {
+  /* Light Mode Overrides */
+  --bg-app: #f4f4f5;
+  --bg-app-rgb: 244, 244, 245;
+  --bg-sidebar: #ffffff;
+  --bg-card: #ffffff;
+  --bg-graphic-color: #000000;
+  --bg-card-hover: #fafafa;
+  --bg-card-active: #f4f4f5;
+  --bg-input: #ffffff;
+  --bg-column: rgba(9, 9, 11, 0.03);
+  --bg-table-header: rgba(9, 9, 11, 0.02);
+  --bg-calendar-header: rgba(9, 9, 11, 0.02);
+  --bg-shortcut: rgba(9, 9, 11, 0.05);
+  --bg-heatmap-0: rgba(9, 9, 11, 0.02);
+  --overlay-bg: rgba(9, 9, 11, 0.4);
+
+  --border: rgba(9, 9, 11, 0.08);
+  --border-hover: rgba(9, 9, 11, 0.15);
+  --border-focus: rgba(99, 102, 241, 0.5);
+
+  --text-primary: #09090b;
+  --text-secondary: #52525b;
+  --text-muted: #a1a1aa;
+
+  --accent-light: rgba(99, 102, 241, 0.08);
+  --success-light: rgba(16, 185, 129, 0.06);
+  --warning-light: rgba(245, 158, 11, 0.06);
+  --danger-light: rgba(239, 68, 68, 0.06);
+  --info-light: rgba(6, 182, 212, 0.06);
+
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(9, 9, 11, 0.05);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.05);
 }
 
 * {
@@ -85,7 +134,98 @@ body {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+  position: relative;
   background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.08) 0%, rgba(0, 0, 0, 0) 70%), var(--bg-app);
+}
+
+/* Base style for preset background image overlay */
+.app-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+  background-repeat: no-repeat;
+  background-position: bottom right;
+  background-size: 620px auto;
+  opacity: 0;
+  transition: opacity var(--transition-normal), background-color var(--transition-normal);
+}
+
+/* Enable background sketch and multiply tint in light mode */
+.preset-sakura::before {
+  background-image: url('/fuji.png');
+  background-color: var(--bg-app);
+  background-blend-mode: multiply;
+  opacity: 0.85;
+}
+
+/* Enable background sketch and screen color inversion in dark mode */
+[data-theme="dark"].preset-sakura::before {
+  background-image: url('/fuji.png');
+  background-color: var(--bg-app);
+  background-blend-mode: screen;
+  filter: invert(0.9) hue-rotate(320deg);
+  opacity: 0.85;
+}
+
+/* Odoo Premium light mode: Cover background fully with odoo_bg.png at low watermark opacity */
+.preset-odoo::before {
+  background-image: url('/odoo_bg.png');
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  opacity: 0.38 !important; /* Increased to make laptop and odoo text highly visible */
+}
+
+/* Odoo Premium dark mode: Dim the background image watermark to fit dark mode */
+[data-theme="dark"].preset-odoo::before {
+  background-image: url('/odoo_bg.png');
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  opacity: 0.28 !important; /* Increased for dark mode visibility */
+  filter: brightness(0.8) contrast(1.2) !important;
+}
+
+/* Odoo Theme Layout Glassmorphism and Variable overrides */
+.preset-odoo {
+  --bg-app: #f6ebf4 !important;
+  --bg-sidebar: #ffffff !important;
+  --border: rgba(113, 75, 103, 0.12) !important;
+  --border-hover: rgba(113, 75, 103, 0.22) !important;
+}
+
+[data-theme="dark"].preset-odoo {
+  --bg-app: #1e081a !important;
+  --bg-sidebar: #220b1d !important;
+  --bg-card: #2a1125 !important;
+  --bg-card-hover: #33172d !important;
+  --bg-card-active: #3b1c34 !important;
+  --bg-input: #1a0817 !important;
+  --border: rgba(255, 255, 255, 0.08) !important;
+  --border-hover: rgba(255, 255, 255, 0.15) !important;
+  --text-primary: #ffffff !important;
+  --text-secondary: rgba(255, 255, 255, 0.8) !important;
+  --text-muted: rgba(255, 255, 255, 0.5) !important;
+  --glass-bg: rgba(30, 8, 26, 0.55) !important;
+  --glass-border: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Odoo preset pillow-shaped button styles */
+.preset-odoo button,
+.preset-odoo .button,
+.preset-odoo [type="button"],
+.preset-odoo [type="submit"],
+.preset-odoo [role="button"] {
+  border-radius: 9999px !important;
+}
+
+[data-theme="light"] .app-container {
+  background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.04) 0%, rgba(255, 255, 255, 0) 70%), var(--bg-app);
 }
 
 .main-content {
@@ -132,12 +272,38 @@ body {
    ========================================== */
 .sidebar {
   width: 260px;
-  background-color: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
+  background: rgba(var(--bg-app-rgb), 0.2) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border-right: 1px solid rgba(var(--accent-rgb), 0.15) !important;
   display: flex;
   flex-direction: column;
   height: 100%;
   flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.05), 8px 0 32px rgba(0, 0, 0, 0.2);
+}
+
+.sidebar::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: -20%;
+  width: 140%;
+  height: 140%;
+  background: radial-gradient(circle at top left, rgba(var(--accent-rgb), 0.08) 0%, rgba(0,0,0,0) 70%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes liquid-swim {
+  0% {
+    transform: translate(-10%, -10%) rotate(0deg);
+  }
+  100% {
+    transform: translate(15%, 15%) rotate(360deg);
+  }
 }
 
 .sidebar-logo {
@@ -148,7 +314,7 @@ body {
   font-size: 1.25rem;
   font-weight: 700;
   letter-spacing: -0.025em;
-  background: linear-gradient(135deg, #fff 30%, var(--text-secondary) 100%);
+  background: linear-gradient(135deg, var(--text-primary) 30%, var(--text-secondary) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -161,6 +327,8 @@ body {
   gap: 0.25rem;
   flex: 1;
   overflow-y: auto;
+  position: relative;
+  z-index: 2;
 }
 
 .sidebar-item {
@@ -178,20 +346,20 @@ body {
 }
 
 .sidebar-item:hover {
-  background-color: var(--bg-card-hover);
+  background-color: rgba(var(--accent-rgb), 0.08);
   color: var(--text-primary);
 }
 
 .sidebar-item.active {
   background-color: var(--accent-light);
   color: var(--text-primary);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
 }
 
 .header {
   height: 70px;
   border-bottom: 1px solid var(--border);
-  background-color: rgba(9, 10, 15, 0.7);
+  background-color: var(--glass-bg);
   backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
@@ -348,7 +516,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(9, 10, 15, 0.85);
+  background-color: var(--overlay-bg);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -419,7 +587,7 @@ body {
 }
 
 .form-input {
-  background-color: rgba(9, 10, 15, 0.5);
+  background-color: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.75rem 1rem;
@@ -528,7 +696,7 @@ body {
   font-weight: 600;
   color: var(--text-secondary);
   border-bottom: 1px solid var(--border);
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: var(--bg-table-header);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -579,7 +747,7 @@ body {
 }
 
 .kanban-column {
-  background-color: rgba(21, 23, 34, 0.5);
+  background-color: var(--bg-column);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem;
@@ -645,7 +813,7 @@ body {
   grid-template-columns: repeat(7, 1fr);
   text-align: center;
   padding: 0.75rem 0;
-  background-color: rgba(255,255,255,0.02);
+  background-color: var(--bg-calendar-header);
   border-bottom: 1px solid var(--border);
   font-size: 0.8125rem;
   font-weight: 600;
@@ -823,7 +991,7 @@ body {
 .command-shortcut {
   font-size: 0.75rem;
   color: var(--text-muted);
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--bg-shortcut);
   padding: 0.125rem 0.375rem;
   border-radius: 4px;
 }
@@ -903,7 +1071,7 @@ body {
   transition: all var(--transition-fast);
 }
 
-.heatmap-cell.level-0 { background-color: rgba(255,255,255,0.02); }
+.heatmap-cell.level-0 { background-color: var(--bg-heatmap-0); }
 .heatmap-cell.level-1 { background-color: rgba(99,102,241,0.2); color: #fff; }
 .heatmap-cell.level-2 { background-color: rgba(99,102,241,0.4); color: #fff; }
 .heatmap-cell.level-3 { background-color: rgba(99,102,241,0.7); color: #fff; }
@@ -919,3 +1087,257 @@ body {
   pointer-events: none;
   z-index: 10000;
 }
+
+/* KPI Card Doodles */
+.kpi-doodle {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 80px;
+  height: 80px;
+  opacity: 0.05;
+  color: var(--text-primary);
+  pointer-events: none;
+  transform: rotate(-8deg);
+  transition: all var(--transition-normal);
+}
+
+.kpi-card:hover .kpi-doodle {
+  transform: rotate(4deg) scale(1.1);
+  opacity: 0.15;
+  color: var(--accent);
+}
+
+/* Custom Card Shapes and Spans for Customizable Grid */
+.span-1 {
+  grid-column: span 1;
+}
+.span-2 {
+  grid-column: span 2;
+}
+.span-3 {
+  grid-column: span 3;
+}
+
+/* Base override for dashboard grid template to support custom spans */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 1.25rem;
+  margin-bottom: 2.5rem;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  .span-3 {
+    grid-column: span 2 !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .span-1, .span-2, .span-3 {
+    grid-column: span 1 !important;
+  }
+}
+
+/* Card Shape Styles */
+.shape-glass {
+  border-radius: 16px !important;
+  background: rgba(var(--bg-app-rgb), 0.25) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(var(--accent-rgb), 0.15) !important;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.05), 0 4px 20px rgba(0,0,0,0.1) !important;
+}
+.shape-glass:hover {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.2) !important;
+  transform: translateY(-2px);
+}
+
+.shape-cyber {
+  border-radius: 0px !important;
+  background: #020202 !important;
+  border: 2px solid var(--accent) !important;
+  box-shadow: 0 0 12px rgba(var(--accent-rgb), 0.3) !important;
+  font-family: monospace !important;
+}
+.shape-cyber:hover {
+  background: rgba(var(--accent-rgb), 0.1) !important;
+  box-shadow: 0 0 25px var(--accent) !important;
+  transform: translateY(-2px);
+}
+
+.shape-rounded {
+  border-radius: 28px !important;
+  background: var(--bg-card) !important;
+  border: 2px solid var(--border) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important;
+}
+.shape-rounded:hover {
+  border-color: var(--accent) !important;
+  transform: translateY(-4px) scale(1.02);
+}
+
+.shape-sharp {
+  border-radius: 2px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--text-primary) !important;
+  box-shadow: none !important;
+}
+.shape-sharp:hover {
+  background: var(--bg-card-hover) !important;
+  transform: translateY(-2px);
+}
+
+/* Background Particle Graphic Canvases */
+.theme-graphics-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.sakura-graphics .graphics-particle {
+  color: rgba(255, 60, 90, 0.9);
+  filter: drop-shadow(0 2px 4px rgba(255, 60, 90, 0.25));
+}
+
+.graphics-particle {
+  position: relative;
+  animation: float-falling 20s infinite linear;
+}
+
+@keyframes float-falling {
+  0% {
+    transform: translateY(-10vh) translateX(0px) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.85;
+  }
+  90% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateY(110vh) translateX(150px) rotate(420deg);
+    opacity: 0;
+  }
+}
+
+/* Tracked Assets 2D Float Styles (Default Theme Background) */
+.default-graphics .asset-particle {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--bg-graphic-color);
+  opacity: 0.35;
+  pointer-events: none;
+  animation: float-2d-random 45s infinite ease-in-out;
+}
+
+.asset-floating-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.floating-pulse-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #10b981;
+  box-shadow: 0 0 6px #10b981;
+  animation: beacon-ping 1.5s infinite ease-in-out;
+}
+
+@keyframes beacon-ping {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+    box-shadow: 0 0 10px #10b981;
+  }
+  100% {
+    transform: scale(0.85);
+    opacity: 0.6;
+  }
+}
+
+@keyframes float-2d-random {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(90px, 60px) rotate(10deg);
+  }
+  50% {
+    transform: translate(30px, 120px) rotate(-5deg);
+  }
+  75% {
+    transform: translate(-70px, 50px) rotate(15deg);
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+/* Fuji Image Background Styling */
+.fuji-image-container {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding-bottom: 2vh;
+  padding-right: 5vw;
+}
+
+.fuji-background-image {
+  max-width: 620px;
+  width: 38vw;
+  height: auto;
+  opacity: 0.65;
+  transition: filter var(--transition-normal);
+}
+
+/* Light Theme: Make white background transparent, black lines visible */
+[data-theme="light"] .fuji-background-image {
+  mix-blend-mode: multiply;
+}
+
+/* Dark Theme: Invert black lines to white, make black background transparent */
+[data-theme="dark"] .fuji-background-image {
+  filter: invert(1);
+  mix-blend-mode: screen;
+}
+
+
