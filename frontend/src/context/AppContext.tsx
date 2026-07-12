@@ -259,6 +259,14 @@ const mapBackendStateToFrontend = (state: string): AssetStatus => {
 };
 
 const mapBackendAssetToFrontend = (a: any, index: number): Asset => {
+  const nameLower = a.name.toLowerCase();
+  const isSharedAsset = nameLower.includes('room') || 
+                        nameLower.includes('suv') || 
+                        nameLower.includes('tesla') || 
+                        nameLower.includes('macbook') || 
+                        nameLower.includes('projector') || 
+                        nameLower.includes('shared') || 
+                        index % 3 === 2; // fallback to ensure some assets are bookable
   return {
     id: a.id,
     name: a.name,
@@ -271,7 +279,7 @@ const mapBackendAssetToFrontend = (a: any, index: number): Asset => {
     location: 'HQ - Floor 3',
     photo_url: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=300&q=80',
     documents: [],
-    is_shared: false,
+    is_shared: isSharedAsset,
     status: mapBackendStateToFrontend(a.state),
     custom_fields: {},
   };

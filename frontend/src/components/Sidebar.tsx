@@ -8,9 +8,11 @@ import {
   Wrench, 
   ClipboardCheck, 
   BarChart3, 
-  Settings 
+  Settings,
+  LogOut
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { supabase } from '../supabase';
 
 interface SidebarProps {
   activeView: string;
@@ -25,7 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   openSettings,
   openCustomize
 }) => {
-  const { currentRole } = useApp();
+  const { currentRole, isLinked } = useApp();
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Admin', 'Asset Manager', 'Department Head', 'Employee'] },
@@ -81,6 +83,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Settings size={18} />
           <span>Supabase Link</span>
         </a>
+        {isLinked && (
+          <a className="sidebar-item" onClick={() => void supabase.auth.signOut()} style={{ marginBottom: 0, color: 'var(--danger)' }}>
+            <LogOut size={18} />
+            <span>Sign Out</span>
+          </a>
+        )}
       </div>
     </div>
   );
