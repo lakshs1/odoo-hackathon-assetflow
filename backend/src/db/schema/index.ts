@@ -3,6 +3,8 @@ export * from './auth';
 export * from './departments';
 export * from './employees';
 export * from './assets';
-
-
-
+export * from './allocations';
+export * from './bookings';
+export * from './maintenance';
+export * from './audit';
+export * from './notifications';

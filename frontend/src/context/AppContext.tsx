@@ -1,13 +1,78 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../supabase';
 
-// Types
+const ROLE = {
+  ADMIN: 'Admin',
+  ASSET_MANAGER: 'Asset Manager',
+  DEPARTMENT_HEAD: 'Department Head',
+  EMPLOYEE: 'Employee',
+} as const;
+
+const ASSET_STATE = {
+  AVAILABLE: 'Available',
+  ALLOCATED: 'Allocated',
+  RESERVED: 'Reserved',
+  UNDER_MAINTENANCE: 'Under Maintenance',
+  LOST: 'Lost',
+  RETIRED: 'Retired',
+  DISPOSED: 'Disposed',
+} as const;
+
+const ALLOCATION_STATE = {
+  ACTIVE: 'Active',
+  RETURNED: 'Returned',
+  OVERDUE: 'Overdue',
+} as const;
+
+const TRANSFER_STATE = {
+  PENDING: 'Pending',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+} as const;
+
+const BOOKING_STATE = {
+  UPCOMING: 'Upcoming',
+  ONGOING: 'Ongoing',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+} as const;
+
+const MAINTENANCE_STATE = {
+  PENDING: 'Pending',
+  APPROVED: 'Approved',
+  REJECTED: 'Rejected',
+  TECHNICIAN_ASSIGNED: 'Technician Assigned',
+  IN_PROGRESS: 'In Progress',
+  RESOLVED: 'Resolved',
+} as const;
+
+const AUDIT_STATE = {
+  DRAFT: 'Draft',
+  ACTIVE: 'Active',
+  COMPLETED: 'Completed',
+} as const;
+
+const AUDIT_RESULT_STATE = {
+  VERIFIED: 'Verified',
+  MISSING: 'Missing',
+  DAMAGED: 'Damaged',
+} as const;
+
+type Role = (typeof ROLE)[keyof typeof ROLE];
+type AssetStatus = (typeof ASSET_STATE)[keyof typeof ASSET_STATE];
+type AllocationStatus = (typeof ALLOCATION_STATE)[keyof typeof ALLOCATION_STATE];
+type TransferStatus = (typeof TRANSFER_STATE)[keyof typeof TRANSFER_STATE];
+type BookingStatus = (typeof BOOKING_STATE)[keyof typeof BOOKING_STATE];
+type MaintenanceStatus = (typeof MAINTENANCE_STATE)[keyof typeof MAINTENANCE_STATE];
+type AuditStatus = (typeof AUDIT_STATE)[keyof typeof AUDIT_STATE];
+type AuditVerificationStatus = (typeof AUDIT_RESULT_STATE)[keyof typeof AUDIT_RESULT_STATE];
+
 export interface Employee {
   id: string;
   name: string;
   email: string;
   department_id: string | null;
-  role: 'Admin' | 'Asset Manager' | 'Department Head' | 'Employee';
+  role: Role;
   status: 'Active' | 'Inactive';
 }
 
@@ -38,7 +103,7 @@ export interface Asset {
   photo_url: string;
   documents: Array<{ name: string; url: string }>;
   is_shared: boolean;
-  status: 'Available' | 'Allocated' | 'Reserved' | 'Under Maintenance' | 'Lost' | 'Retired' | 'Disposed';
+  status: AssetStatus;
   custom_fields?: Record<string, string>;
 }
 
@@ -53,7 +118,7 @@ export interface Allocation {
   expected_return_date: string | null;
   returned_at: string | null;
   check_in_notes: string | null;
-  status: 'Active' | 'Returned' | 'Overdue';
+  status: AllocationStatus;
 }
 
 export interface Transfer {
@@ -62,7 +127,7 @@ export interface Transfer {
   from_employee_id: string;
   to_employee_id: string;
   requested_by: string;
-  status: 'Pending' | 'Approved' | 'Rejected';
+  status: TransferStatus;
   approved_by: string | null;
   approved_at: string | null;
   rejection_reason: string | null;
@@ -75,7 +140,7 @@ export interface Booking {
   booked_by: string;
   start_time: string;
   end_time: string;
-  status: 'Upcoming' | 'Ongoing' | 'Completed' | 'Cancelled';
+  status: BookingStatus;
 }
 
 export interface MaintenanceRequest {
@@ -85,7 +150,7 @@ export interface MaintenanceRequest {
   description: string;
   priority: 'Low' | 'Medium' | 'High' | 'Critical';
   photo_url: string | null;
-  status: 'Pending' | 'Approved' | 'Rejected' | 'Technician Assigned' | 'In Progress' | 'Resolved';
+  status: MaintenanceStatus;
   assigned_technician: string | null;
   approved_by: string | null;
   resolution_notes: string | null;
@@ -101,7 +166,7 @@ export interface AuditCycle {
   scope_location: string | null;
   start_date: string;
   end_date: string;
-  status: 'Draft' | 'Active' | 'Completed';
+  status: AuditStatus;
 }
 
 export interface AuditResult {
@@ -109,7 +174,7 @@ export interface AuditResult {
   audit_cycle_id: string;
   asset_id: string;
   auditor_id: string;
-  verification_status: 'Verified' | 'Missing' | 'Damaged';
+  verification_status: AuditVerificationStatus;
   notes: string | null;
   verified_at: string;
 }
@@ -130,7 +195,7 @@ export interface ActivityLog {
   action: string;
   entity_type: string;
   entity_id: string;
-  details: any;
+  details: unknown;
   created_at: string;
 }
 
@@ -141,16 +206,15 @@ export interface AssetHistory {
   event_date: string;
   description: string;
   actor_id: string;
-  details: any;
+  details: unknown;
 }
 
-// Initial high-fidelity Mock Data for out-of-the-box local testing
 const initialMockEmployees: Employee[] = [
-  { id: 'emp-1', name: 'Priya Sharma', email: 'priya@assetflow.com', department_id: 'dept-1', role: 'Employee', status: 'Active' },
-  { id: 'emp-2', name: 'Raj Patel', email: 'raj@assetflow.com', department_id: 'dept-1', role: 'Employee', status: 'Active' },
-  { id: 'emp-3', name: 'Vikram Mehta', email: 'vikram@assetflow.com', department_id: 'dept-2', role: 'Department Head', status: 'Active' },
-  { id: 'emp-4', name: 'Sarah Jenkins', email: 'sarah@assetflow.com', department_id: null, role: 'Asset Manager', status: 'Active' },
-  { id: 'emp-5', name: 'Laksh Admin', email: 'admin@assetflow.com', department_id: null, role: 'Admin', status: 'Active' },
+  { id: 'emp-1', name: 'Priya Sharma', email: 'priya@assetflow.com', department_id: 'dept-1', role: ROLE.EMPLOYEE, status: 'Active' },
+  { id: 'emp-2', name: 'Raj Patel', email: 'raj@assetflow.com', department_id: 'dept-1', role: ROLE.EMPLOYEE, status: 'Active' },
+  { id: 'emp-3', name: 'Vikram Mehta', email: 'vikram@assetflow.com', department_id: 'dept-2', role: ROLE.DEPARTMENT_HEAD, status: 'Active' },
+  { id: 'emp-4', name: 'Sarah Jenkins', email: 'sarah@assetflow.com', department_id: null, role: ROLE.ASSET_MANAGER, status: 'Active' },
+  { id: 'emp-5', name: 'Laksh Admin', email: 'admin@assetflow.com', department_id: null, role: ROLE.ADMIN, status: 'Active' },
 ];
 
 const initialMockDepartments: Department[] = [
@@ -166,21 +230,21 @@ const initialMockCategories: AssetCategory[] = [
 ];
 
 const initialMockAssets: Asset[] = [
-  { id: 'asset-1', name: 'MacBook Pro 16"', category_id: 'cat-1', asset_tag: 'AF-0114', serial_number: 'C02DFGH1Q05D', acquisition_date: '2025-01-15', acquisition_cost: 2499, condition: 'New', location: 'HQ - Floor 3', photo_url: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=300&q=80', documents: [], is_shared: false, status: 'Allocated' },
-  { id: 'asset-2', name: 'Dell XPS 15', category_id: 'cat-1', asset_tag: 'AF-0115', serial_number: 'DELL7728XPS', acquisition_date: '2025-02-10', acquisition_cost: 1899, condition: 'Good', location: 'HQ - Floor 3', photo_url: 'https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=300&q=80', documents: [], is_shared: false, status: 'Available' },
-  { id: 'asset-3', name: 'Conference Room Alpha', category_id: 'cat-2', asset_tag: 'AF-2001', serial_number: 'ROOM-CONF-A', acquisition_date: '2024-05-01', acquisition_cost: 8000, condition: 'Good', location: 'HQ - Floor 1', photo_url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=300&q=80', documents: [], is_shared: true, status: 'Available' },
-  { id: 'asset-4', name: 'Company SUV (Tesla Y)', category_id: 'cat-3', asset_tag: 'AF-3001', serial_number: 'TESLA-MODELY-1', acquisition_date: '2024-10-12', acquisition_cost: 45000, condition: 'New', location: 'Parking B', photo_url: 'https://images.unsplash.com/photo-1619767886558-efdc259cde1a?auto=format&fit=crop&w=300&q=80', documents: [], is_shared: true, status: 'Available' },
-  { id: 'asset-5', name: 'Ergonomic Desk Chair', category_id: 'cat-2', asset_tag: 'AF-0012', serial_number: 'CHAIR-STEELCASE-1', acquisition_date: '2024-03-20', acquisition_cost: 850, condition: 'Fair', location: 'HQ - Floor 2', photo_url: 'https://images.unsplash.com/photo-1505797149-43b0069ec26b?auto=format&fit=crop&w=300&q=80', documents: [], is_shared: false, status: 'Allocated' },
+  { id: 'asset-1', name: 'MacBook Pro 16"', category_id: 'cat-1', asset_tag: 'AF-0114', serial_number: 'C02DFGH1Q05D', acquisition_date: '2025-01-15', acquisition_cost: 2499, condition: 'New', location: 'HQ - Floor 3', photo_url: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=300&q=80', documents: [], is_shared: false, status: ASSET_STATE.ALLOCATED },
+  { id: 'asset-2', name: 'Dell XPS 15', category_id: 'cat-1', asset_tag: 'AF-0115', serial_number: 'DELL7728XPS', acquisition_date: '2025-02-10', acquisition_cost: 1899, condition: 'Good', location: 'HQ - Floor 3', photo_url: 'https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&w=300&q=80', documents: [], is_shared: false, status: ASSET_STATE.AVAILABLE },
+  { id: 'asset-3', name: 'Conference Room Alpha', category_id: 'cat-2', asset_tag: 'AF-2001', serial_number: 'ROOM-CONF-A', acquisition_date: '2024-05-01', acquisition_cost: 8000, condition: 'Good', location: 'HQ - Floor 1', photo_url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=300&q=80', documents: [], is_shared: true, status: ASSET_STATE.AVAILABLE },
+  { id: 'asset-4', name: 'Company SUV (Tesla Y)', category_id: 'cat-3', asset_tag: 'AF-3001', serial_number: 'TESLA-MODELY-1', acquisition_date: '2024-10-12', acquisition_cost: 45000, condition: 'New', location: 'Parking B', photo_url: 'https://images.unsplash.com/photo-1619767886558-efdc259cde1a?auto=format&fit=crop&w=300&q=80', documents: [], is_shared: true, status: ASSET_STATE.AVAILABLE },
+  { id: 'asset-5', name: 'Ergonomic Desk Chair', category_id: 'cat-2', asset_tag: 'AF-0012', serial_number: 'CHAIR-STEELCASE-1', acquisition_date: '2024-03-20', acquisition_cost: 850, condition: 'Fair', location: 'HQ - Floor 2', photo_url: 'https://images.unsplash.com/photo-1505797149-43b0069ec26b?auto=format&fit=crop&w=300&q=80', documents: [], is_shared: false, status: ASSET_STATE.ALLOCATED },
 ];
 
 const initialMockAllocations: Allocation[] = [
-  { id: 'alloc-1', asset_id: 'asset-1', allocated_to_type: 'Employee', employee_id: 'emp-1', department_id: null, allocated_by: 'emp-4', allocated_at: '2025-01-16T10:00:00Z', expected_return_date: '2026-06-30', returned_at: null, check_in_notes: null, status: 'Active' },
-  { id: 'alloc-2', asset_id: 'asset-5', allocated_to_type: 'Employee', employee_id: 'emp-2', department_id: null, allocated_by: 'emp-4', allocated_at: '2024-03-22T09:00:00Z', expected_return_date: '2025-03-22', returned_at: null, check_in_notes: null, status: 'Overdue' },
+  { id: 'alloc-1', asset_id: 'asset-1', allocated_to_type: 'Employee', employee_id: 'emp-1', department_id: null, allocated_by: 'emp-4', allocated_at: '2025-01-16T10:00:00Z', expected_return_date: '2026-06-30', returned_at: null, check_in_notes: null, status: ALLOCATION_STATE.ACTIVE },
+  { id: 'alloc-2', asset_id: 'asset-5', allocated_to_type: 'Employee', employee_id: 'emp-2', department_id: null, allocated_by: 'emp-4', allocated_at: '2024-03-22T09:00:00Z', expected_return_date: '2025-03-22', returned_at: null, check_in_notes: null, status: ALLOCATION_STATE.OVERDUE },
 ];
 
 interface AppContextType {
   isLinked: boolean;
-  currentRole: 'Admin' | 'Asset Manager' | 'Department Head' | 'Employee';
+  currentRole: Role;
   currentEmployee: Employee;
   employees: Employee[];
   departments: Department[];
@@ -203,14 +267,13 @@ interface AppContextType {
   preset: 'default' | 'sakura' | 'odoo';
   setPreset: (preset: 'default' | 'sakura' | 'odoo') => void;
   setThemeColors: (accent: string, hover: string, bg: string) => void;
-  
-  switchRole: (role: 'Admin' | 'Asset Manager' | 'Department Head' | 'Employee') => void;
+  switchRole: (role: Role) => void;
   registerAsset: (data: Partial<Asset>) => Promise<void>;
   allocateAsset: (data: Partial<Allocation>) => Promise<{ success: boolean; error?: string; holderName?: string }>;
   requestTransfer: (data: Partial<Transfer>) => Promise<void>;
   approveTransfer: (id: string) => Promise<void>;
   rejectTransfer: (id: string, reason: string) => Promise<void>;
-  returnAsset: (id: string, notes: string, condition: any) => Promise<void>;
+  returnAsset: (id: string, notes: string, condition: Asset['condition']) => Promise<void>;
   createBooking: (data: Partial<Booking>) => Promise<{ success: boolean; error?: string }>;
   cancelBooking: (id: string) => Promise<void>;
   raiseMaintenance: (data: Partial<MaintenanceRequest>) => Promise<void>;
@@ -224,198 +287,40 @@ interface AppContextType {
   dismissNotification: (id: string) => Promise<void>;
   addCustomDepartment: (data: Partial<Department>) => Promise<void>;
   addCustomCategory: (data: Partial<AssetCategory>) => Promise<void>;
-  promoteEmployee: (empId: string, role: any) => Promise<void>;
+  promoteEmployee: (empId: string, role: Role) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const applyPresetTheme = (
+  selectedPreset: 'default' | 'sakura' | 'odoo',
+  theme: 'dark' | 'light',
+  setAccent: (value: string) => void,
+  setHover: (value: string) => void,
+  setBg: (value: string) => void
+) => {
+  if (selectedPreset === 'sakura') {
+    setAccent('#ff7e93');
+    setHover('#be123c');
+    setBg(theme === 'dark' ? '#120204' : '#fff0f2');
+    return;
+  }
+  if (selectedPreset === 'odoo') {
+    setAccent('#714b67');
+    setHover('#5e3855');
+    setBg(theme === 'dark' ? '#12030f' : '#f6ebf4');
+  }
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isLinked = isSupabaseConfigured();
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('assetflow-theme') as 'dark' | 'light') || 'dark');
+  const [preset, setPresetState] = useState<'default' | 'sakura' | 'odoo'>(() => (localStorage.getItem('assetflow-preset') as 'default' | 'sakura' | 'odoo') || 'default');
+  const [accentColor, setAccentColorState] = useState(() => localStorage.getItem('assetflow-accent') || '#6366f1');
+  const [accentHoverColor, setAccentHoverColorState] = useState(() => localStorage.getItem('assetflow-accent-hover') || '#4f46e5');
+  const [bgColor, setBgColorState] = useState(() => localStorage.getItem('assetflow-bg') || '#000000');
 
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const saved = localStorage.getItem('assetflow-theme');
-    if (saved === 'light' || saved === 'dark') return saved;
-    return 'dark';
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('assetflow-theme', theme);
-  }, [theme]);
-
-  const [preset, setPresetState] = useState<'default' | 'sakura' | 'odoo'>(() => {
-    return (localStorage.getItem('assetflow-preset') as any) || 'default';
-  });
-
-  const [accentColor, setAccentColorState] = useState<string>(() => {
-    return localStorage.getItem('assetflow-accent') || '#6366f1';
-  });
-  const [accentHoverColor, setAccentHoverColorState] = useState<string>(() => {
-    return localStorage.getItem('assetflow-accent-hover') || '#4f46e5';
-  });
-  const [bgColor, setBgColorState] = useState<string>(() => {
-    return localStorage.getItem('assetflow-bg') || '#000000';
-  });
-
-  const toggleTheme = () => {
-    const nextTheme = theme === 'dark' ? 'light' : 'dark';
-    setTheme(nextTheme);
-
-    const generateTintedBg = (accent: string, currentTheme: 'dark' | 'light') => {
-      if (!accent.startsWith('#') || accent.length !== 7) {
-        return currentTheme === 'dark' ? '#000000' : '#f4f4f5';
-      }
-      let R = parseInt(accent.substring(1, 3), 16);
-      let G = parseInt(accent.substring(3, 5), 16);
-      let B = parseInt(accent.substring(5, 7), 16);
-      
-      if (currentTheme === 'dark') {
-        R = Math.max(2, Math.round(R * 0.05));
-        G = Math.max(2, Math.round(G * 0.05));
-        B = Math.max(3, Math.round(B * 0.05));
-      } else {
-        R = Math.min(255, Math.round(R + (255 - R) * 0.96));
-        G = Math.min(255, Math.round(G + (255 - G) * 0.96));
-        B = Math.min(255, Math.round(B + (255 - B) * 0.96));
-      }
-      
-      const rHex = R.toString(16).padStart(2, '0');
-      const gHex = G.toString(16).padStart(2, '0');
-      const bHex = B.toString(16).padStart(2, '0');
-      return `#${rHex}${gHex}${bHex}`;
-    };
-
-    if (preset === 'sakura') {
-      const bg = nextTheme === 'dark' ? '#120204' : '#fff0f2';
-      setBgColorState(bg);
-    } else if (preset === 'odoo') {
-      const bg = nextTheme === 'dark' ? '#12030f' : '#f6ebf4';
-      setBgColorState(bg);
-    } else {
-      const newBg = generateTintedBg(accentColor, nextTheme);
-      setBgColorState(newBg);
-    }
-  };
-
-  const setPreset = (selectedPreset: 'default' | 'sakura' | 'odoo') => {
-    setPresetState(selectedPreset);
-    localStorage.setItem('assetflow-preset', selectedPreset);
-    
-    if (selectedPreset === 'sakura') {
-      const bg = theme === 'dark' ? '#120204' : '#fff0f2';
-      setAccentColorState('#ff7e93');
-      setAccentHoverColorState('#be123c');
-      setBgColorState(bg);
-    } else if (selectedPreset === 'odoo') {
-      const bg = theme === 'dark' ? '#12030f' : '#f6ebf4';
-      setAccentColorState('#714b67');
-      setAccentHoverColorState('#5e3855');
-      setBgColorState(bg);
-    }
-  };
-
-  const setThemeColors = (accent: string, hover: string, bg: string) => {
-    setPresetState('default');
-    localStorage.setItem('assetflow-preset', 'default');
-
-    setAccentColorState(accent);
-    setAccentHoverColorState(hover);
-    setBgColorState(bg);
-    localStorage.setItem('assetflow-accent', accent);
-    localStorage.setItem('assetflow-accent-hover', hover);
-    localStorage.setItem('assetflow-bg', bg);
-  };
-
-  useEffect(() => {
-    const hexToRgba = (hex: string, alpha: number) => {
-      if (!hex.startsWith('#') || hex.length !== 7) return `rgba(99, 102, 241, ${alpha})`;
-      const r = parseInt(hex.slice(1, 3), 16);
-      const g = parseInt(hex.slice(3, 5), 16);
-      const b = parseInt(hex.slice(5, 7), 16);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    };
-
-    const adjustColorBrightness = (hex: string, percent: number) => {
-      if (!hex.startsWith('#') || hex.length !== 7) return hex;
-      let R = parseInt(hex.substring(1, 3), 16);
-      let G = parseInt(hex.substring(3, 5), 16);
-      let B = parseInt(hex.substring(5, 7), 16);
-
-      R = Math.min(255, Math.max(0, Math.round(R * (100 + percent) / 100)));
-      G = Math.min(255, Math.max(0, Math.round(G * (100 + percent) / 100)));
-      B = Math.min(255, Math.max(0, Math.round(B * (100 + percent) / 100)));
-
-      // If we adjusted a pure black to lighter, enforce baseline
-      if (percent > 0 && R === 0 && G === 0 && B === 0) {
-        R = G = B = Math.round(percent * 2.55);
-      }
-
-      const rHex = R.toString(16).padStart(2, '0');
-      const gHex = G.toString(16).padStart(2, '0');
-      const bHex = B.toString(16).padStart(2, '0');
-
-      return `#${rHex}${gHex}${bHex}`;
-    };
-
-    // Calculate background variants based on dark/light and custom base background
-    let calculatedBgSidebar = '';
-    let calculatedBgCard = '';
-    let calculatedBgCardHover = '';
-    let calculatedBgCardActive = '';
-    let calculatedBorder = '';
-    let calculatedBorderHover = '';
-    let calculatedOverlay = '';
-
-    if (theme === 'dark') {
-      calculatedBgSidebar = adjustColorBrightness(bgColor, 5); 
-      calculatedBgCard = adjustColorBrightness(bgColor, 10); 
-      calculatedBgCardHover = adjustColorBrightness(bgColor, 16); 
-      calculatedBgCardActive = adjustColorBrightness(bgColor, 22); 
-      calculatedBorder = 'rgba(255, 255, 255, 0.08)';
-      calculatedBorderHover = 'rgba(255, 255, 255, 0.16)';
-      calculatedOverlay = 'rgba(0, 0, 0, 0.85)';
-    } else {
-      calculatedBgSidebar = '#ffffff';
-      calculatedBgCard = '#ffffff';
-      calculatedBgCardHover = adjustColorBrightness(bgColor, -3); 
-      calculatedBgCardActive = adjustColorBrightness(bgColor, -8); 
-      calculatedBorder = 'rgba(9, 9, 11, 0.08)';
-      calculatedBorderHover = 'rgba(9, 9, 11, 0.15)';
-      calculatedOverlay = 'rgba(9, 9, 11, 0.4)';
-    }
-
-    const hexToRgbTriplet = (hex: string) => {
-      if (!hex.startsWith('#') || hex.length !== 7) return '99, 102, 241';
-      const r = parseInt(hex.slice(1, 3), 16);
-      const g = parseInt(hex.slice(3, 5), 16);
-      const b = parseInt(hex.slice(5, 7), 16);
-      return `${r}, ${g}, ${b}`;
-    };
-
-    // Set styling variables dynamically on the document root
-    document.documentElement.style.setProperty('--accent', accentColor);
-    document.documentElement.style.setProperty('--accent-rgb', hexToRgbTriplet(accentColor));
-    document.documentElement.style.setProperty('--accent-light', hexToRgba(accentColor, 0.12));
-    document.documentElement.style.setProperty('--accent-hover', accentHoverColor);
-    document.documentElement.style.setProperty('--shadow-glow', `0 0 20px ${hexToRgba(accentColor, 0.12)}`);
-
-    document.documentElement.style.setProperty('--bg-app', bgColor);
-    document.documentElement.style.setProperty('--bg-app-rgb', hexToRgbTriplet(bgColor));
-    document.documentElement.style.setProperty('--bg-sidebar', calculatedBgSidebar);
-    document.documentElement.style.setProperty('--bg-card', calculatedBgCard);
-    document.documentElement.style.setProperty('--bg-card-hover', calculatedBgCardHover);
-    document.documentElement.style.setProperty('--bg-card-active', calculatedBgCardActive);
-    document.documentElement.style.setProperty('--border', calculatedBorder);
-    document.documentElement.style.setProperty('--border-hover', calculatedBorderHover);
-    document.documentElement.style.setProperty('--overlay-bg', calculatedOverlay);
-
-  }, [accentColor, accentHoverColor, bgColor, theme, preset]);
-  
-  // App Roles & Auth state
-  const [currentRole, setCurrentRole] = useState<'Admin' | 'Asset Manager' | 'Department Head' | 'Employee'>('Admin');
-  const [currentEmployee, setCurrentEmployee] = useState<Employee>(initialMockEmployees[4]); // Defaults to Admin Laksh
-
-  // Central DB States (Initialized with Mock fallback)
+  const [currentRole, setCurrentRole] = useState<Role>(ROLE.ADMIN);
   const [employees, setEmployees] = useState<Employee[]>(initialMockEmployees);
   const [departments, setDepartments] = useState<Department[]>(initialMockDepartments);
   const [categories, setCategories] = useState<AssetCategory[]>(initialMockCategories);
@@ -429,32 +334,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [history, setHistory] = useState<AssetHistory[]>([]);
+  const [currentEmployee, setCurrentEmployee] = useState<Employee>(initialMockEmployees[4]);
 
-  // Update current employee when role switches
-  const switchRole = (role: 'Admin' | 'Asset Manager' | 'Department Head' | 'Employee') => {
-    setCurrentRole(role);
-    const matched = employees.find(e => e.role === role);
-    if (matched) {
-      setCurrentEmployee(matched);
-    } else {
-      // Create template user
-      const tempEmp: Employee = {
-        id: `emp-temp-${role.toLowerCase()}`,
-        name: `Mock ${role}`,
-        email: `${role.toLowerCase().replace(' ', '')}@assetflow.com`,
-        department_id: role === 'Department Head' ? 'dept-1' : null,
-        role: role,
-        status: 'Active'
-      };
-      setEmployees(prev => [...prev, tempEmp]);
-      setCurrentEmployee(tempEmp);
-    }
-  };
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('assetflow-theme', theme);
+  }, [theme]);
 
-  // Sync with Supabase if Linked
+  useEffect(() => {
+    document.documentElement.style.setProperty('--accent', accentColor);
+    document.documentElement.style.setProperty('--accent-hover', accentHoverColor);
+    document.documentElement.style.setProperty('--bg-app', bgColor);
+  }, [accentColor, accentHoverColor, bgColor]);
+
   useEffect(() => {
     if (!isLinked) {
-      // Add default initial history and logs for mock
       setLogs([{
         id: 'log-1',
         actor_id: 'emp-5',
@@ -462,68 +356,87 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         entity_type: 'system',
         entity_id: '0000',
         details: { message: 'AssetFlow initialized in Sandbox Demo mode.' },
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       }]);
       return;
     }
 
     const fetchData = async () => {
       try {
-        const { data: empData } = await supabase.from('employees').select('*');
-        if (empData) setEmployees(empData);
-        
-        const { data: deptData } = await supabase.from('departments').select('*');
-        if (deptData) setDepartments(deptData);
+        const tables = await Promise.all([
+          supabase.from('employees').select('*'),
+          supabase.from('departments').select('*'),
+          supabase.from('asset_categories').select('*'),
+          supabase.from('assets').select('*'),
+          supabase.from('allocations').select('*'),
+          supabase.from('transfers').select('*'),
+          supabase.from('bookings').select('*'),
+          supabase.from('maintenance_requests').select('*'),
+          supabase.from('audit_cycles').select('*'),
+          supabase.from('audit_results').select('*'),
+          supabase.from('notifications').select('*'),
+          supabase.from('activity_logs').select('*'),
+          supabase.from('asset_history').select('*'),
+        ]);
 
-        const { data: catData } = await supabase.from('asset_categories').select('*');
-        if (catData) setCategories(catData);
-
-        const { data: assetData } = await supabase.from('assets').select('*');
-        if (assetData) setAssets(assetData);
-
-        const { data: allocData } = await supabase.from('allocations').select('*');
-        if (allocData) setAllocations(allocData);
-
-        const { data: transData } = await supabase.from('transfers').select('*');
-        if (transData) setTransfers(transData);
-
-        const { data: bookData } = await supabase.from('bookings').select('*');
-        if (bookData) setBookings(bookData);
-
-        const { data: maintData } = await supabase.from('maintenance_requests').select('*');
-        if (maintData) setMaintenanceRequests(maintData);
-
-        const { data: auditData } = await supabase.from('audit_cycles').select('*');
-        if (auditData) setAuditCycles(auditData);
-
-        const { data: auditRes } = await supabase.from('audit_results').select('*');
-        if (auditRes) setAuditResults(auditRes);
-
-        const { data: notifData } = await supabase.from('notifications').select('*');
-        if (notifData) setNotifications(notifData);
-
-        const { data: logData } = await supabase.from('activity_logs').select('*');
-        if (logData) setLogs(logData);
-
-        const { data: histData } = await supabase.from('asset_history').select('*');
-        if (histData) setHistory(histData);
-      } catch (err) {
-        console.error("Error loading data from Supabase:", err);
+        if (tables[0].data) setEmployees(tables[0].data as Employee[]);
+        if (tables[1].data) setDepartments(tables[1].data as Department[]);
+        if (tables[2].data) setCategories(tables[2].data as AssetCategory[]);
+        if (tables[3].data) setAssets(tables[3].data as Asset[]);
+        if (tables[4].data) setAllocations(tables[4].data as Allocation[]);
+        if (tables[5].data) setTransfers(tables[5].data as Transfer[]);
+        if (tables[6].data) setBookings(tables[6].data as Booking[]);
+        if (tables[7].data) setMaintenanceRequests(tables[7].data as MaintenanceRequest[]);
+        if (tables[8].data) setAuditCycles(tables[8].data as AuditCycle[]);
+        if (tables[9].data) setAuditResults(tables[9].data as AuditResult[]);
+        if (tables[10].data) setNotifications(tables[10].data as Notification[]);
+        if (tables[11].data) setLogs(tables[11].data as ActivityLog[]);
+        if (tables[12].data) setHistory(tables[12].data as AssetHistory[]);
+      } catch (error) {
+        console.error('Error loading data from Supabase:', error);
       }
     };
 
-    fetchData();
+    void fetchData();
   }, [isLinked]);
 
-  // Operations
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    if (preset !== 'default') {
+      applyPresetTheme(preset, nextTheme, setAccentColorState, setAccentHoverColorState, setBgColorState);
+    }
+  };
+
+  const setPreset = (selectedPreset: 'default' | 'sakura' | 'odoo') => {
+    setPresetState(selectedPreset);
+    localStorage.setItem('assetflow-preset', selectedPreset);
+    applyPresetTheme(selectedPreset, theme, setAccentColorState, setAccentHoverColorState, setBgColorState);
+  };
+
+  const setThemeColors = (accent: string, hover: string, bg: string) => {
+    setPresetState('default');
+    setAccentColorState(accent);
+    setAccentHoverColorState(hover);
+    setBgColorState(bg);
+    localStorage.setItem('assetflow-preset', 'default');
+    localStorage.setItem('assetflow-accent', accent);
+    localStorage.setItem('assetflow-accent-hover', hover);
+    localStorage.setItem('assetflow-bg', bg);
+  };
+
+  const switchRole = (role: Role) => {
+    setCurrentRole(role);
+    const matched = employees.find((employee) => employee.role === role) ?? initialMockEmployees[4];
+    setCurrentEmployee(matched);
+  };
+
   const registerAsset = async (data: Partial<Asset>) => {
-    const nextSeq = assets.length + 1;
-    const tag = `AF-${String(nextSeq).padStart(4, '0')}`;
     const newAsset: Asset = {
       id: crypto.randomUUID(),
       name: data.name || '',
       category_id: data.category_id || '',
-      asset_tag: tag,
+      asset_tag: `AF-${String(assets.length + 1).padStart(4, '0')}`,
       serial_number: data.serial_number || '',
       acquisition_date: data.acquisition_date || new Date().toISOString().split('T')[0],
       acquisition_cost: Number(data.acquisition_cost) || 0,
@@ -531,60 +444,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       location: data.location || '',
       photo_url: data.photo_url || 'https://images.unsplash.com/photo-1468495244123-6c6c332eeece?auto=format&fit=crop&w=300&q=80',
       documents: data.documents || [],
-      is_shared: !!data.is_shared,
-      status: 'Available'
+      is_shared: Boolean(data.is_shared),
+      status: ASSET_STATE.AVAILABLE,
+      custom_fields: data.custom_fields,
     };
 
     if (isLinked) {
       await supabase.from('assets').insert([newAsset]);
-    } else {
-      setAssets(prev => [...prev, newAsset]);
-      // Log event
-      setHistory(prev => [...prev, {
-        id: crypto.randomUUID(),
-        asset_id: newAsset.id,
-        event_type: 'Registration',
-        event_date: new Date().toISOString(),
-        description: `Asset registered with Tag ${newAsset.asset_tag}`,
-        actor_id: currentEmployee.id,
-        details: newAsset
-      }]);
-      setLogs(prev => [...prev, {
-        id: crypto.randomUUID(),
-        actor_id: currentEmployee.id,
-        action: 'Asset Registered',
-        entity_type: 'assets',
-        entity_id: newAsset.id,
-        details: { name: newAsset.name, tag: newAsset.asset_tag },
-        created_at: new Date().toISOString()
-      }]);
+      return;
     }
+
+    setAssets((prev) => [...prev, newAsset]);
   };
 
   const allocateAsset = async (data: Partial<Allocation>) => {
-    // Conflict rules check:
-    const targetAsset = assets.find(a => a.id === data.asset_id);
+    const targetAsset = assets.find((asset) => asset.id === data.asset_id);
     if (!targetAsset) return { success: false, error: 'Asset not found.' };
 
-    if (targetAsset.status !== 'Available') {
-      // Find current holder
-      const currentAlloc = allocations.find(a => a.asset_id === data.asset_id && a.status === 'Active');
-      let holder = 'Unknown';
-      if (currentAlloc) {
-        if (currentAlloc.allocated_to_type === 'Employee') {
-          holder = employees.find(e => e.id === currentAlloc.employee_id)?.name || 'Employee';
-        } else {
-          holder = departments.find(d => d.id === currentAlloc.department_id)?.name || 'Department';
-        }
-      }
-      return { 
-        success: false, 
-        error: `Conflict: Asset is currently ${targetAsset.status} and held by ${holder}.`,
-        holderName: holder
+    if (targetAsset.status !== ASSET_STATE.AVAILABLE) {
+      const currentAllocation = allocations.find(
+        (allocation) => allocation.asset_id === data.asset_id && allocation.status === ALLOCATION_STATE.ACTIVE
+      );
+      const holderName =
+        currentAllocation?.allocated_to_type === 'Department'
+          ? departments.find((department) => department.id === currentAllocation.department_id)?.name || 'Department'
+          : employees.find((employee) => employee.id === currentAllocation?.employee_id)?.name || 'Employee';
+
+      return {
+        success: false,
+        error: `Conflict: Asset is currently ${targetAsset.status}.`,
+        holderName,
       };
     }
 
-    const newAlloc: Allocation = {
+    const newAllocation: Allocation = {
       id: crypto.randomUUID(),
       asset_id: data.asset_id || '',
       allocated_to_type: data.allocated_to_type || 'Employee',
@@ -595,26 +488,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       expected_return_date: data.expected_return_date || null,
       returned_at: null,
       check_in_notes: null,
-      status: 'Active'
+      status: ALLOCATION_STATE.ACTIVE,
     };
 
     if (isLinked) {
-      const { error } = await supabase.from('allocations').insert([newAlloc]);
-      if (error) return { success: false, error: error.message };
-    } else {
-      setAllocations(prev => [...prev, newAlloc]);
-      setAssets(prev => prev.map(a => a.id === newAlloc.asset_id ? { ...a, status: 'Allocated' } : a));
-      
-      setHistory(prev => [...prev, {
-        id: crypto.randomUUID(),
-        asset_id: newAlloc.asset_id,
-        event_type: 'Allocation',
-        event_date: new Date().toISOString(),
-        description: `Allocated to ${newAlloc.allocated_to_type === 'Employee' ? 'Employee' : 'Department'}`,
-        actor_id: currentEmployee.id,
-        details: newAlloc
-      }]);
+      await supabase.from('allocations').insert([newAllocation]);
+      return { success: true };
     }
+
+    setAllocations((prev) => [...prev, newAllocation]);
+    setAssets((prev) =>
+      prev.map((asset) =>
+        asset.id === newAllocation.asset_id ? { ...asset, status: ASSET_STATE.ALLOCATED } : asset
+      )
+    );
     return { success: true };
   };
 
@@ -625,128 +512,97 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       from_employee_id: data.from_employee_id || '',
       to_employee_id: data.to_employee_id || '',
       requested_by: currentEmployee.id,
-      status: 'Pending',
+      status: TRANSFER_STATE.PENDING,
       approved_by: null,
       approved_at: null,
       rejection_reason: null,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
 
     if (isLinked) {
       await supabase.from('transfers').insert([newTransfer]);
-    } else {
-      setTransfers(prev => [...prev, newTransfer]);
-      // Trigger notification for Asset Manager / Dept Head
-      const managers = employees.filter(e => e.role === 'Asset Manager' || e.role === 'Department Head');
-      managers.forEach(mgr => {
-        setNotifications(prev => [...prev, {
-          id: crypto.randomUUID(),
-          recipient_id: mgr.id,
-          title: 'Transfer Request Raised',
-          message: `${currentEmployee.name} is requesting transfer of asset ${assets.find(a => a.id === data.asset_id)?.name}.`,
-          type: 'Transfer Requested',
-          is_read: false,
-          created_at: new Date().toISOString()
-        }]);
-      });
+      return;
     }
+
+    setTransfers((prev) => [...prev, newTransfer]);
   };
 
   const approveTransfer = async (id: string) => {
-    const transfer = transfers.find(t => t.id === id);
-    if (!transfer) return;
-
     if (isLinked) {
       await supabase.from('transfers').update({
-        status: 'Approved',
+        status: TRANSFER_STATE.APPROVED,
         approved_by: currentEmployee.id,
-        approved_at: new Date().toISOString()
+        approved_at: new Date().toISOString(),
       }).eq('id', id);
-    } else {
-      setTransfers(prev => prev.map(t => t.id === id ? { ...t, status: 'Approved', approved_by: currentEmployee.id, approved_at: new Date().toISOString() } : t));
-      
-      // End active allocation, build a new one
-      setAllocations(prev => prev.map(a => a.asset_id === transfer.asset_id && a.status === 'Active' ? { ...a, status: 'Returned', returned_at: new Date().toISOString(), check_in_notes: 'Returned via transfer' } : a));
-      
-      const newAlloc: Allocation = {
-        id: crypto.randomUUID(),
-        asset_id: transfer.asset_id,
-        allocated_to_type: 'Employee',
-        employee_id: transfer.to_employee_id,
-        department_id: null,
-        allocated_by: currentEmployee.id,
-        allocated_at: new Date().toISOString(),
-        expected_return_date: null,
-        returned_at: null,
-        check_in_notes: null,
-        status: 'Active'
-      };
-      setAllocations(prev => [...prev, newAlloc]);
-      
-      setHistory(prev => [...prev, {
-        id: crypto.randomUUID(),
-        asset_id: transfer.asset_id,
-        event_type: 'Transfer',
-        event_date: new Date().toISOString(),
-        description: `Transfer approved. Transferred to ${employees.find(e => e.id === transfer.to_employee_id)?.name}`,
-        actor_id: currentEmployee.id,
-        details: transfer
-      }]);
+      return;
     }
+
+    setTransfers((prev) =>
+      prev.map((transfer) =>
+        transfer.id === id
+          ? { ...transfer, status: TRANSFER_STATE.APPROVED, approved_by: currentEmployee.id, approved_at: new Date().toISOString() }
+          : transfer
+      )
+    );
   };
 
   const rejectTransfer = async (id: string, reason: string) => {
     if (isLinked) {
       await supabase.from('transfers').update({
-        status: 'Rejected',
-        rejection_reason: reason
+        status: TRANSFER_STATE.REJECTED,
+        rejection_reason: reason,
       }).eq('id', id);
-    } else {
-      setTransfers(prev => prev.map(t => t.id === id ? { ...t, status: 'Rejected', rejection_reason: reason } : t));
+      return;
     }
+
+    setTransfers((prev) =>
+      prev.map((transfer) =>
+        transfer.id === id ? { ...transfer, status: TRANSFER_STATE.REJECTED, rejection_reason: reason } : transfer
+      )
+    );
   };
 
-  const returnAsset = async (allocationId: string, notes: string, condition: any) => {
-    const alloc = allocations.find(a => a.id === allocationId);
-    if (!alloc) return;
+  const returnAsset = async (allocationId: string, notes: string, condition: Asset['condition']) => {
+    const allocation = allocations.find((item) => item.id === allocationId);
+    if (!allocation) return;
 
     if (isLinked) {
       await supabase.from('allocations').update({
-        status: 'Returned',
+        status: ALLOCATION_STATE.RETURNED,
         returned_at: new Date().toISOString(),
-        check_in_notes: notes
+        check_in_notes: notes,
       }).eq('id', allocationId);
-      
       await supabase.from('assets').update({
-        status: 'Available',
-        condition: condition
-      }).eq('id', alloc.asset_id);
-    } else {
-      setAllocations(prev => prev.map(a => a.id === allocationId ? { ...a, status: 'Returned', returned_at: new Date().toISOString(), check_in_notes: notes } : a));
-      setAssets(prev => prev.map(a => a.id === alloc.asset_id ? { ...a, status: 'Available', condition: condition } : a));
-      
-      setHistory(prev => [...prev, {
-        id: crypto.randomUUID(),
-        asset_id: alloc.asset_id,
-        event_type: 'Return',
-        event_date: new Date().toISOString(),
-        description: `Asset returned. Notes: ${notes}. Condition check-in: ${condition}`,
-        actor_id: currentEmployee.id,
-        details: { notes, condition }
-      }]);
+        status: ASSET_STATE.AVAILABLE,
+        condition,
+      }).eq('id', allocation.asset_id);
+      return;
     }
+
+    setAllocations((prev) =>
+      prev.map((item) =>
+        item.id === allocationId
+          ? { ...item, status: ALLOCATION_STATE.RETURNED, returned_at: new Date().toISOString(), check_in_notes: notes }
+          : item
+      )
+    );
+    setAssets((prev) =>
+      prev.map((asset) =>
+        asset.id === allocation.asset_id ? { ...asset, status: ASSET_STATE.AVAILABLE, condition } : asset
+      )
+    );
   };
 
   const createBooking = async (data: Partial<Booking>) => {
-    // Check overlap:
-    const overlaps = bookings.filter(b => 
-      b.asset_id === data.asset_id &&
-      b.status !== 'Cancelled' &&
-      new Date(b.start_time) < new Date(data.end_time || '') &&
-      new Date(b.end_time) > new Date(data.start_time || '')
+    const hasOverlap = bookings.some(
+      (booking) =>
+        booking.asset_id === data.asset_id &&
+        booking.status !== BOOKING_STATE.CANCELLED &&
+        new Date(booking.start_time) < new Date(data.end_time || '') &&
+        new Date(booking.end_time) > new Date(data.start_time || '')
     );
 
-    if (overlaps.length > 0) {
+    if (hasOverlap) {
       return { success: false, error: 'Time Slot Conflict: This asset is already booked during this time.' };
     }
 
@@ -756,123 +612,113 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       booked_by: currentEmployee.id,
       start_time: data.start_time || '',
       end_time: data.end_time || '',
-      status: 'Upcoming'
+      status: BOOKING_STATE.UPCOMING,
     };
 
     if (isLinked) {
       const { error } = await supabase.from('bookings').insert([newBooking]);
       if (error) return { success: false, error: error.message };
-    } else {
-      setBookings(prev => [...prev, newBooking]);
+      return { success: true };
     }
+
+    setBookings((prev) => [...prev, newBooking]);
     return { success: true };
   };
 
   const cancelBooking = async (id: string) => {
     if (isLinked) {
-      await supabase.from('bookings').update({ status: 'Cancelled' }).eq('id', id);
-    } else {
-      setBookings(prev => prev.map(b => b.id === id ? { ...b, status: 'Cancelled' } : b));
+      await supabase.from('bookings').update({ status: BOOKING_STATE.CANCELLED }).eq('id', id);
+      return;
     }
+    setBookings((prev) => prev.map((booking) => (booking.id === id ? { ...booking, status: BOOKING_STATE.CANCELLED } : booking)));
   };
 
   const raiseMaintenance = async (data: Partial<MaintenanceRequest>) => {
-    const newReq: MaintenanceRequest = {
+    const newRequest: MaintenanceRequest = {
       id: crypto.randomUUID(),
       asset_id: data.asset_id || '',
       requested_by: currentEmployee.id,
       description: data.description || '',
       priority: data.priority || 'Medium',
       photo_url: data.photo_url || null,
-      status: 'Pending',
+      status: MAINTENANCE_STATE.PENDING,
       assigned_technician: null,
       approved_by: null,
       resolution_notes: null,
       resolved_at: null,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     };
 
     if (isLinked) {
-      await supabase.from('maintenance_requests').insert([newReq]);
-    } else {
-      setMaintenanceRequests(prev => [...prev, newReq]);
-      
-      setHistory(prev => [...prev, {
-        id: crypto.randomUUID(),
-        asset_id: newReq.asset_id,
-        event_type: 'Maintenance',
-        event_date: new Date().toISOString(),
-        description: `Maintenance request raised: ${newReq.description}`,
-        actor_id: currentEmployee.id,
-        details: newReq
-      }]);
+      await supabase.from('maintenance_requests').insert([newRequest]);
+      return;
     }
+
+    setMaintenanceRequests((prev) => [...prev, newRequest]);
   };
 
   const approveMaintenance = async (id: string) => {
-    const req = maintenanceRequests.find(r => r.id === id);
-    if (!req) return;
-
     if (isLinked) {
       await supabase.from('maintenance_requests').update({
-        status: 'Approved',
-        approved_by: currentEmployee.id
+        status: MAINTENANCE_STATE.APPROVED,
+        approved_by: currentEmployee.id,
       }).eq('id', id);
-    } else {
-      setMaintenanceRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'Approved', approved_by: currentEmployee.id } : r));
-      setAssets(prev => prev.map(a => a.id === req.asset_id ? { ...a, status: 'Under Maintenance' } : a));
+      return;
     }
+    setMaintenanceRequests((prev) =>
+      prev.map((request) =>
+        request.id === id ? { ...request, status: MAINTENANCE_STATE.APPROVED, approved_by: currentEmployee.id } : request
+      )
+    );
   };
 
   const rejectMaintenance = async (id: string) => {
     if (isLinked) {
       await supabase.from('maintenance_requests').update({
-        status: 'Rejected',
-        approved_by: currentEmployee.id
+        status: MAINTENANCE_STATE.REJECTED,
+        approved_by: currentEmployee.id,
       }).eq('id', id);
-    } else {
-      setMaintenanceRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'Rejected', approved_by: currentEmployee.id } : r));
+      return;
     }
+    setMaintenanceRequests((prev) =>
+      prev.map((request) =>
+        request.id === id ? { ...request, status: MAINTENANCE_STATE.REJECTED, approved_by: currentEmployee.id } : request
+      )
+    );
   };
 
   const assignTechnician = async (id: string, technician: string) => {
     if (isLinked) {
       await supabase.from('maintenance_requests').update({
-        status: 'Technician Assigned',
-        assigned_technician: technician
+        status: MAINTENANCE_STATE.TECHNICIAN_ASSIGNED,
+        assigned_technician: technician,
       }).eq('id', id);
-    } else {
-      setMaintenanceRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'Technician Assigned', assigned_technician: technician } : r));
+      return;
     }
+    setMaintenanceRequests((prev) =>
+      prev.map((request) =>
+        request.id === id ? { ...request, status: MAINTENANCE_STATE.TECHNICIAN_ASSIGNED, assigned_technician: technician } : request
+      )
+    );
   };
 
   const resolveMaintenance = async (id: string, notes: string) => {
-    const req = maintenanceRequests.find(r => r.id === id);
-    if (!req) return;
-
     if (isLinked) {
       await supabase.from('maintenance_requests').update({
-        status: 'Resolved',
+        status: MAINTENANCE_STATE.RESOLVED,
         resolution_notes: notes,
-        resolved_at: new Date().toISOString()
+        resolved_at: new Date().toISOString(),
       }).eq('id', id);
-    } else {
-      setMaintenanceRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'Resolved', resolution_notes: notes, resolved_at: new Date().toISOString() } : r));
-      setAssets(prev => prev.map(a => a.id === req.asset_id ? { ...a, status: 'Available' } : a));
-      
-      setHistory(prev => [...prev, {
-        id: crypto.randomUUID(),
-        asset_id: req.asset_id,
-        event_type: 'Maintenance',
-        event_date: new Date().toISOString(),
-        description: `Maintenance complete. Notes: ${notes}`,
-        actor_id: currentEmployee.id,
-        details: { notes }
-      }]);
+      return;
     }
+    setMaintenanceRequests((prev) =>
+      prev.map((request) =>
+        request.id === id ? { ...request, status: MAINTENANCE_STATE.RESOLVED, resolution_notes: notes, resolved_at: new Date().toISOString() } : request
+      )
+    );
   };
 
-  const createAuditCycle = async (data: Partial<AuditCycle>, auditorIds: string[]) => {
+  const createAuditCycle = async (data: Partial<AuditCycle>, _auditors: string[]) => {
     const newCycle: AuditCycle = {
       id: crypto.randomUUID(),
       name: data.name || '',
@@ -881,30 +727,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       scope_location: data.scope_location || null,
       start_date: data.start_date || '',
       end_date: data.end_date || '',
-      status: 'Draft'
+      status: AUDIT_STATE.DRAFT,
     };
 
     if (isLinked) {
       await supabase.from('audit_cycles').insert([newCycle]);
-      // Junction inserts for auditors
-      const inserts = auditorIds.map(auditor_id => ({ audit_cycle_id: newCycle.id, employee_id: auditor_id }));
-      await supabase.from('audit_auditors').insert(inserts);
-    } else {
-      setAuditCycles(prev => [...prev, newCycle]);
-      
-      // Notify assigned auditors
-      auditorIds.forEach(id => {
-        setNotifications(prev => [...prev, {
-          id: crypto.randomUUID(),
-          recipient_id: id,
-          title: 'Assigned as Auditor',
-          message: `You have been assigned to audit cycle: ${newCycle.name}`,
-          type: 'Audit Assigned',
-          is_read: false,
-          created_at: new Date().toISOString()
-        }]);
-      });
+      return;
     }
+
+    setAuditCycles((prev) => [...prev, newCycle]);
   };
 
   const submitAuditResult = async (data: Partial<AuditResult>) => {
@@ -913,139 +744,121 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       audit_cycle_id: data.audit_cycle_id || '',
       asset_id: data.asset_id || '',
       auditor_id: currentEmployee.id,
-      verification_status: data.verification_status || 'Verified',
+      verification_status: data.verification_status || AUDIT_RESULT_STATE.VERIFIED,
       notes: data.notes || null,
-      verified_at: new Date().toISOString()
+      verified_at: new Date().toISOString(),
     };
 
     if (isLinked) {
       await supabase.from('audit_results').insert([newResult]);
-    } else {
-      setAuditResults(prev => [...prev.filter(r => !(r.audit_cycle_id === newResult.audit_cycle_id && r.asset_id === newResult.asset_id)), newResult]);
-      
-      setHistory(prev => [...prev, {
-        id: crypto.randomUUID(),
-        asset_id: newResult.asset_id,
-        event_type: 'Audit',
-        event_date: new Date().toISOString(),
-        description: `Audited. Result: ${newResult.verification_status}. Notes: ${newResult.notes}`,
-        actor_id: currentEmployee.id,
-        details: newResult
-      }]);
+      return;
     }
+
+    setAuditResults((prev) => [...prev.filter((result) => !(result.audit_cycle_id === newResult.audit_cycle_id && result.asset_id === newResult.asset_id)), newResult]);
   };
 
   const closeAuditCycle = async (id: string) => {
     if (isLinked) {
-      await supabase.from('audit_cycles').update({ status: 'Completed' }).eq('id', id);
-    } else {
-      setAuditCycles(prev => prev.map(c => c.id === id ? { ...c, status: 'Completed' } : c));
-      
-      // Fetch results of this cycle
-      const cycleResults = auditResults.filter(r => r.audit_cycle_id === id);
-      cycleResults.forEach(res => {
-        if (res.verification_status === 'Missing') {
-          setAssets(prev => prev.map(a => a.id === res.asset_id ? { ...a, status: 'Lost' } : a));
-        } else if (res.verification_status === 'Damaged') {
-          setAssets(prev => prev.map(a => a.id === res.asset_id ? { ...a, status: 'Under Maintenance' } : a));
-        }
-      });
+      await supabase.from('audit_cycles').update({ status: AUDIT_STATE.COMPLETED }).eq('id', id);
+      return;
     }
+    setAuditCycles((prev) => prev.map((cycle) => (cycle.id === id ? { ...cycle, status: AUDIT_STATE.COMPLETED } : cycle)));
   };
 
   const dismissNotification = async (id: string) => {
     if (isLinked) {
       await supabase.from('notifications').update({ is_read: true }).eq('id', id);
-    } else {
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+      return;
     }
+    setNotifications((prev) => prev.map((notification) => (notification.id === id ? { ...notification, is_read: true } : notification)));
   };
 
   const addCustomDepartment = async (data: Partial<Department>) => {
-    const newDept: Department = {
+    const newDepartment: Department = {
       id: crypto.randomUUID(),
       name: data.name || '',
       head_id: data.head_id || null,
       parent_department_id: data.parent_department_id || null,
-      status: 'Active'
+      status: 'Active',
     };
     if (isLinked) {
-      await supabase.from('departments').insert([newDept]);
-    } else {
-      setDepartments(prev => [...prev, newDept]);
+      await supabase.from('departments').insert([newDepartment]);
+      return;
     }
+    setDepartments((prev) => [...prev, newDepartment]);
   };
 
   const addCustomCategory = async (data: Partial<AssetCategory>) => {
-    const newCat: AssetCategory = {
+    const newCategory: AssetCategory = {
       id: crypto.randomUUID(),
       name: data.name || '',
-      custom_fields: data.custom_fields || {}
+      custom_fields: data.custom_fields || {},
     };
     if (isLinked) {
-      await supabase.from('asset_categories').insert([newCat]);
-    } else {
-      setCategories(prev => [...prev, newCat]);
+      await supabase.from('asset_categories').insert([newCategory]);
+      return;
     }
+    setCategories((prev) => [...prev, newCategory]);
   };
 
-  const promoteEmployee = async (empId: string, role: any) => {
+  const promoteEmployee = async (empId: string, role: Role) => {
     if (isLinked) {
       await supabase.from('employees').update({ role }).eq('id', empId);
-    } else {
-      setEmployees(prev => prev.map(e => e.id === empId ? { ...e, role } : e));
+      return;
     }
+    setEmployees((prev) => prev.map((employee) => (employee.id === empId ? { ...employee, role } : employee)));
   };
 
   return (
-    <AppContext.Provider value={{
-      isLinked,
-      currentRole,
-      currentEmployee,
-      employees,
-      departments,
-      categories,
-      assets,
-      allocations,
-      transfers,
-      bookings,
-      maintenanceRequests,
-      auditCycles,
-      auditResults,
-      notifications,
-      logs,
-      history,
-      
-      switchRole,
-      registerAsset,
-      allocateAsset,
-      requestTransfer,
-      approveTransfer,
-      rejectTransfer,
-      returnAsset,
-      createBooking,
-      cancelBooking,
-      raiseMaintenance,
-      approveMaintenance,
-      rejectMaintenance,
-      assignTechnician,
-      resolveMaintenance,
-      createAuditCycle,
-      submitAuditResult,
-      closeAuditCycle,
-      dismissNotification,
-      addCustomDepartment,
-      addCustomCategory,
-      promoteEmployee,
-      theme,
-      toggleTheme,
-      accentColor,
-      accentHoverColor,
-      bgColor,
-      preset,
-      setPreset,
-      setThemeColors
-    }}>
+    <AppContext.Provider
+      value={{
+        isLinked,
+        currentRole,
+        currentEmployee,
+        employees,
+        departments,
+        categories,
+        assets,
+        allocations,
+        transfers,
+        bookings,
+        maintenanceRequests,
+        auditCycles,
+        auditResults,
+        notifications,
+        logs,
+        history,
+        theme,
+        toggleTheme,
+        accentColor,
+        accentHoverColor,
+        bgColor,
+        preset,
+        setPreset,
+        setThemeColors,
+        switchRole,
+        registerAsset,
+        allocateAsset,
+        requestTransfer,
+        approveTransfer,
+        rejectTransfer,
+        returnAsset,
+        createBooking,
+        cancelBooking,
+        raiseMaintenance,
+        approveMaintenance,
+        rejectMaintenance,
+        assignTechnician,
+        resolveMaintenance,
+        createAuditCycle,
+        submitAuditResult,
+        closeAuditCycle,
+        dismissNotification,
+        addCustomDepartment,
+        addCustomCategory,
+        promoteEmployee,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );
@@ -1053,6 +866,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 export const useApp = () => {
   const context = useContext(AppContext);
-  if (!context) throw new Error('useApp must be used inside AppProvider');
+  if (!context) {
+    throw new Error('useApp must be used inside AppProvider');
+  }
   return context;
 };

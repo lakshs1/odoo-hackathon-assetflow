@@ -1,0 +1,787 @@
+# Design Document — AssetFlow ERP Backend
+
+## Overview
+
+AssetFlow is an enterprise asset lifecycle management backend. It is a **Node.js REST API** organized into 9 feature modules, using **Drizzle ORM** to interface with a **Supabase PostgreSQL** database. Authentication is handled by **Supabase Auth** (JWT verification). RBAC is enforced in the API middleware layer using the role stored in the JWT claim. Scheduled jobs run via **pg_cron** inside Supabase. The server is a single deployable Node.js application.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                  Client / API Consumer               │
+└────────────────────┬────────────────────────────────┘
+                     │ HTTPS
+          ┌──────────▼───────────┐
+          │  Node.js REST API    │
+          │  (Express / Hono)    │
+          │                      │
+          │  src/                │
+          │  ├─ modules/         │
+          │  │  ├─ auth/         │
+          │  │  ├─ departments/  │
+          │  │  ├─ employees/    │
+          │  │  ├─ assets/       │
+          │  │  ├─ allocations/  │
+          │  │  ├─ bookings/     │
+          │  │  ├─ maintenance/  │
+          │  │  ├─ audit/        │
+          │  │  ├─ notifications/│
+          │  │  └─ kpi/          │
+          │  ├─ middleware/      │
+          │  │  ├─ auth.ts       │  ← JWT verification (Supabase)
+          │  │  └─ rbac.ts       │  ← role-based guard
+          │  ├─ db/              │
+          │  │  ├─ schema/       │  ← Drizzle schema files
+          │  │  └─ index.ts      │  ← Drizzle client
+          │  └─ lib/             │
+          │     └─ errors.ts     │
+          └──────────┬───────────┘
+                     │ Drizzle ORM (postgres-js driver)
+    ┌────────────────▼──────────────────────┐
+    │         Supabase PostgreSQL            │
+    │  ┌─────────────┐  ┌─────────────┐    │
+    │  │  DB Triggers │  │  pg_cron    │    │
+    │  │  (state mach)│  │  (scheduled)│    │
+    │  └─────────────┘  └─────────────┘    │
+    └───────────────────────────────────────┘
+```
+
+**Request flow:**
+1. Client signs in via Supabase Auth (`supabase.auth.signInWithPassword`) and receives a JWT.
+2. Client sends the JWT as `Authorization: Bearer <token>` to the Node.js API.
+3. `auth.ts` middleware verifies the JWT with `@supabase/supabase-js` and attaches `req.user` (including `role`).
+4. `rbac.ts` middleware checks `req.user.role` against the required roles for each route — this is the **primary enforcement layer**.
+5. Route handlers call service functions that use Drizzle ORM to query/mutate Supabase PostgreSQL.
+6. Supabase RLS policies on each table act as a **database-level safety net** (defence in depth). Because the API connects via the service-role, RLS is not actively evaluated per-request — it is a backstop for any direct DB access outside the API.
+7. Database-level triggers enforce state machine correctness as a last-resort guard.
+8. pg_cron executes scheduled SQL jobs (notifications, booking expiry, discrepancy reports) independently.
+
+---
+
+## Project Structure
+
+```
+src/
+├── db/
+│   ├── index.ts                  ← Drizzle client (postgres-js)
+│   └── schema/
+│       ├── enums.ts              ← all pgEnum definitions
+│       ├── auth.ts               ← userRoles table
+│       ├── departments.ts
+│       ├── employees.ts
+│       ├── assets.ts             ← assetCategories + assets
+│       ├── allocations.ts
+│       ├── bookings.ts
+│       ├── maintenance.ts
+│       ├── audit.ts              ← auditCycles + assignments + findings + reports
+│       ├── notifications.ts
+│       └── index.ts              ← re-exports all tables
+├── middleware/
+│   ├── auth.ts                   ← JWT verification via @supabase/supabase-js
+│   └── rbac.ts                   ← requireRole(...roles) factory
+├── modules/
+│   ├── auth/
+│   │   ├── auth.routes.ts
+│   │   └── auth.service.ts
+│   ├── departments/
+│   │   ├── departments.routes.ts
+│   │   └── departments.service.ts
+│   ├── employees/
+│   │   ├── employees.routes.ts
+│   │   └── employees.service.ts
+│   ├── assets/
+│   │   ├── assets.routes.ts
+│   │   └── assets.service.ts
+│   ├── allocations/
+│   │   ├── allocations.routes.ts
+│   │   └── allocations.service.ts
+│   ├── bookings/
+│   │   ├── bookings.routes.ts
+│   │   └── bookings.service.ts
+│   ├── maintenance/
+│   │   ├── maintenance.routes.ts
+│   │   └── maintenance.service.ts
+│   ├── audit/
+│   │   ├── audit.routes.ts
+│   │   └── audit.service.ts
+│   ├── notifications/
+│   │   ├── notifications.routes.ts
+│   │   └── notifications.service.ts
+│   └── kpi/
+│       ├── kpi.routes.ts
+│       └── kpi.service.ts
+├── lib/
+│   ├── errors.ts                 ← AppError class
+│   └── supabase.ts               ← Supabase admin client
+├── app.ts                        ← Express app, route registration
+└── server.ts                     ← HTTP server entry point
+
+drizzle/
+└── migrations/                   ← generated by `drizzle-kit generate`
+
+supabase/
+└── migrations/                   ← pg_cron jobs + DB triggers (raw SQL)
+```
+
+---
+
+## Data Models (Drizzle Schema)
+
+### Enums (`src/db/schema/enums.ts`)
+
+```typescript
+import { pgEnum } from 'drizzle-orm/pg-core';
+
+export const assetStateEnum = pgEnum('asset_state', [
+  'available', 'allocated', 'reserved',
+  'under_maintenance', 'lost', 'retired', 'disposed',
+]);
+export const maintenanceStateEnum = pgEnum('maintenance_state', [
+  'requested', 'approved', 'in_progress', 'completed', 'rejected',
+]);
+export const bookingStatusEnum = pgEnum('booking_status', [
+  'confirmed', 'cancelled', 'completed',
+]);
+export const notificationTypeEnum = pgEnum('notification_type', [
+  'overdue_return', 'booking_reminder', 'maintenance_update',
+]);
+export const allocationStatusEnum = pgEnum('allocation_status', ['active', 'returned']);
+export const auditCycleStatusEnum = pgEnum('audit_cycle_status', ['planned', 'active', 'completed']);
+export const userRoleEnum = pgEnum('user_role', [
+  'super_admin', 'admin', 'manager', 'auditor', 'employee',
+]);
+```
+
+### Table Definitions
+
+```typescript
+// src/db/schema/auth.ts
+export const userRoles = pgTable('user_roles', {
+  id:         uuid('id').primaryKey().defaultRandom(),
+  userId:     uuid('user_id').notNull().unique(),
+  role:       userRoleEnum('role').notNull().default('employee'),
+  assignedBy: uuid('assigned_by'),
+  createdAt:  timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// src/db/schema/departments.ts
+export const departments = pgTable('departments', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  name:      text('name').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// src/db/schema/employees.ts
+export const employees = pgTable('employees', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  userId:       uuid('user_id').notNull(),
+  departmentId: uuid('department_id').notNull().references(() => departments.id),
+  fullName:     text('full_name').notNull(),
+  employeeCode: text('employee_code').notNull().unique(),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+```typescript
+// src/db/schema/assets.ts
+export const assetCategories = pgTable('asset_categories', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  name:        text('name').notNull(),
+  description: text('description'),
+});
+
+export const assets = pgTable('assets', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  categoryId:   uuid('category_id').notNull().references(() => assetCategories.id),
+  name:         text('name').notNull(),
+  serialNumber: text('serial_number').notNull().unique(),
+  state:        assetStateEnum('state').notNull().default('available'),
+  createdAt:    timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:    timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// src/db/schema/allocations.ts
+export const allocations = pgTable('allocations', {
+  id:                      uuid('id').primaryKey().defaultRandom(),
+  assetId:                 uuid('asset_id').notNull().references(() => assets.id),
+  allocatedToEmployeeId:   uuid('allocated_to_employee_id').references(() => employees.id),
+  allocatedToDepartmentId: uuid('allocated_to_department_id').references(() => departments.id),
+  allocatedBy:             uuid('allocated_by').notNull().references(() => employees.id),
+  allocatedAt:             timestamp('allocated_at', { withTimezone: true }).notNull().defaultNow(),
+  returnedAt:              timestamp('returned_at', { withTimezone: true }),
+  status:                  allocationStatusEnum('status').notNull().default('active'),
+});
+// XOR check constraint added via raw SQL in migration:
+// CONSTRAINT allocation_target_xor CHECK (
+//   (allocated_to_employee_id IS NULL) <> (allocated_to_department_id IS NULL)
+// )
+```
+
+```typescript
+// src/db/schema/bookings.ts
+export const bookings = pgTable('bookings', {
+  id:                 uuid('id').primaryKey().defaultRandom(),
+  assetId:            uuid('asset_id').notNull().references(() => assets.id),
+  bookedByEmployeeId: uuid('booked_by_employee_id').notNull().references(() => employees.id),
+  startTime:          timestamp('start_time', { withTimezone: true }).notNull(),
+  endTime:            timestamp('end_time', { withTimezone: true }).notNull(),
+  status:             bookingStatusEnum('status').notNull().default('confirmed'),
+  createdAt:          timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+// Added via raw SQL in migration:
+// CONSTRAINT booking_time_order CHECK (end_time > start_time)
+// EXCLUDE USING gist (asset_id WITH =, tstzrange(start_time, end_time) WITH &&)
+//   WHERE (status = 'confirmed')
+
+// src/db/schema/maintenance.ts
+export const maintenanceRequests = pgTable('maintenance_requests', {
+  id:          uuid('id').primaryKey().defaultRandom(),
+  assetId:     uuid('asset_id').notNull().references(() => assets.id),
+  requestedBy: uuid('requested_by').notNull().references(() => employees.id),
+  approvedBy:  uuid('approved_by').references(() => employees.id),
+  state:       maintenanceStateEnum('state').notNull().default('requested'),
+  notes:       text('notes'),
+  createdAt:   timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt:   timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+```typescript
+// src/db/schema/audit.ts
+export const auditCycles = pgTable('audit_cycles', {
+  id:        uuid('id').primaryKey().defaultRandom(),
+  name:      text('name').notNull(),
+  startDate: date('start_date').notNull(),
+  endDate:   date('end_date').notNull(),
+  status:    auditCycleStatusEnum('status').notNull().default('planned'),
+  createdBy: uuid('created_by').notNull().references(() => employees.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+export const auditAssignments = pgTable('audit_assignments', {
+  id:                uuid('id').primaryKey().defaultRandom(),
+  auditCycleId:      uuid('audit_cycle_id').notNull().references(() => auditCycles.id),
+  auditorEmployeeId: uuid('auditor_employee_id').notNull().references(() => employees.id),
+}, (t) => ({ uniq: unique().on(t.auditCycleId, t.auditorEmployeeId) }));
+export const auditFindings = pgTable('audit_findings', {
+  id:              uuid('id').primaryKey().defaultRandom(),
+  auditCycleId:    uuid('audit_cycle_id').notNull().references(() => auditCycles.id),
+  assetId:         uuid('asset_id').notNull().references(() => assets.id),
+  expectedState:   assetStateEnum('expected_state').notNull(),
+  observedState:   assetStateEnum('observed_state').notNull(),
+  discrepancyFlag: boolean('discrepancy_flag').notNull()
+    .generatedAlwaysAs(sql`expected_state <> observed_state`),
+  notes:           text('notes'),
+  createdBy:       uuid('created_by').notNull().references(() => employees.id),
+});
+export const discrepancyReports = pgTable('discrepancy_reports', {
+  id:           uuid('id').primaryKey().defaultRandom(),
+  auditCycleId: uuid('audit_cycle_id').notNull().references(() => auditCycles.id),
+  generatedAt:  timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+  reportData:   jsonb('report_data').notNull(),
+});
+
+// src/db/schema/notifications.ts
+export const notifications = pgTable('notifications', {
+  id:                  uuid('id').primaryKey().defaultRandom(),
+  recipientEmployeeId: uuid('recipient_employee_id').notNull().references(() => employees.id),
+  type:                notificationTypeEnum('type').notNull(),
+  referenceId:         uuid('reference_id').notNull(),
+  referenceTable:      text('reference_table').notNull(),
+  message:             text('message').notNull(),
+  isRead:              boolean('is_read').notNull().default(false),
+  createdAt:           timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+```
+
+---
+
+## State Machine Specifications
+
+### Asset State Machine
+
+```
+available ──→ allocated
+available ──→ reserved
+available ──→ under_maintenance
+allocated ──→ available
+allocated ──→ under_maintenance
+allocated ──→ lost
+reserved  ──→ available
+reserved  ──→ allocated
+under_maintenance ──→ available
+under_maintenance ──→ retired
+lost      ──→ available
+lost      ──→ disposed
+retired   ──→ disposed
+disposed  (terminal)
+```
+
+Validated in `assets.service.ts` against a `VALID_TRANSITIONS` map before every Drizzle update. The DB trigger `trg_validate_asset_transition` (BEFORE UPDATE OF state ON assets, raises `ERRCODE '22000'`) acts as a last-resort guard and is mapped to HTTP 422 in the error handler.
+
+### Maintenance Request State Machine
+
+```
+requested ──→ approved
+requested ──→ rejected
+approved  ──→ in_progress
+in_progress ──→ completed
+```
+
+Same pattern: validated in `maintenance.service.ts` with `ALLOWED_TRANSITIONS` map; DB trigger `trg_validate_maintenance_transition` as safety net.
+
+---
+
+## Module Designs
+
+### Module 1 — Authentication & RBAC (`src/modules/auth/`)
+
+**JWT Middleware (`src/middleware/auth.ts`):**
+
+Verifies the Supabase JWT on every request using `supabase.auth.getUser(token)`. Attaches `req.user = { id, role }` from `app_metadata.role`.
+
+**RBAC Middleware (`src/middleware/rbac.ts`):**
+
+`requireRole(...roles)` factory — returns 403 if `req.user.role` is not in the allowed list.
+
+**Role assignment (`POST /api/auth/assign-role`):**
+
+Service uses a `CAN_ASSIGN` permission matrix and Drizzle upsert on `user_roles`. Returns 403 for unauthorized callers.
+
+```typescript
+const CAN_ASSIGN: Record<string, string[]> = {
+  super_admin: ['admin', 'manager', 'auditor', 'employee'],
+  admin:       ['admin', 'manager', 'auditor', 'employee'],
+  manager: [], auditor: [], employee: [],
+};
+```
+
+**Default role on signup:** DB trigger `trg_create_user_role` fires AFTER INSERT ON `auth.users` and inserts `role = 'employee'` into `user_roles`.
+
+**Supabase Auth hook** (`supabase/functions/auth-hook/index.ts`): reads `user_roles` and injects `{ role }` into `app_metadata` at token issuance. Only Edge Function in the project.
+
+---
+
+### Module 2 — Departments (`src/modules/departments/`)
+
+Standard Drizzle CRUD. Route-level `requireRole('admin', 'super_admin')` guards all writes. Department deletion catches the Drizzle FK violation (employees.department_id RESTRICT) and re-throws `AppError(409)`.
+
+---
+
+### Module 3 — Employees (`src/modules/employees/`)
+
+Standard Drizzle CRUD. `updatedAt` set explicitly on every `db.update()` call: `.set({ ...data, updatedAt: new Date() })`.
+
+---
+
+### Module 4 — Assets (`src/modules/assets/`)
+
+State transitions validated in `assets.service.ts` against `VALID_TRANSITIONS` map before the Drizzle update. DB trigger acts as a last-resort safety net.
+
+```typescript
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  available:         ['allocated', 'reserved', 'under_maintenance'],
+  allocated:         ['available', 'under_maintenance', 'lost'],
+  reserved:          ['available', 'allocated'],
+  under_maintenance: ['available', 'retired'],
+  lost:              ['available', 'disposed'],
+  retired:           ['disposed'],
+  disposed:          [],
+};
+```
+
+---
+
+### Module 5 — Allocations (`src/modules/allocations/`)
+
+`createAllocation` uses a Drizzle transaction: SELECT FOR UPDATE on the asset row, check `state === 'available'`, then atomically update asset state to `allocated` and insert the allocation record. Returns HTTP 409 if not available.
+
+```typescript
+return db.transaction(async (tx) => {
+  const [asset] = await tx.select().from(assets)
+    .where(eq(assets.id, data.assetId)).for('update');
+  if (!asset || asset.state !== 'available')
+    throw new AppError(409, 'Asset is not available');
+  await tx.update(assets)
+    .set({ state: 'allocated', updatedAt: new Date() })
+    .where(eq(assets.id, data.assetId));
+  return tx.insert(allocations).values(data).returning();
+});
+```
+
+---
+
+### Module 6 — Bookings (`src/modules/bookings/`)
+
+`createBooking` queries for overlapping confirmed bookings via Drizzle. On conflict, calls `getNextAvailableSlots()` (timeline walk of sorted confirmed bookings) and throws `ConflictError(409, { nextAvailable: [...3 slots] })`. On success: Drizzle transaction inserts booking and transitions asset to `reserved`. `tstzrange` exclusion constraint on DB is the final overlap guard.
+
+---
+
+### Module 7 — Maintenance (`src/modules/maintenance/`)
+
+`createMaintenanceRequest` runs a Drizzle transaction that:
+1. Inserts the maintenance request with `state = 'requested'`.
+2. Checks for any active allocation on the asset (`status = 'active'`). If one exists, it is **automatically closed** by setting `returned_at = now()` and `status = 'returned'` — preventing an orphaned allocation record.
+3. Transitions the asset state to `under_maintenance`.
+
+`transitionMaintenanceRequest` validates the transition against `ALLOWED_TRANSITIONS`, checks role for `approved`, then runs a Drizzle transaction: update `maintenance_requests.state`, optionally update `assets.state` to `available` (on `completed`/`rejected`), and insert a `notifications` row — all atomically.
+
+---
+
+### Module 8 — Audit (`src/modules/audit/`)
+
+Standard Drizzle CRUD for cycles, assignments, findings. Auditor write authorization for findings checked in service: `audit_assignments` row must exist for the caller's employee ID + cycle ID, and the cycle must be `active`. Discrepancy reports generated by pg_cron — no API write endpoint.
+
+---
+
+### Module 9 — Notifications (`src/modules/notifications/`)
+
+`getMyNotifications` queries `notifications` filtered by the caller's `employees.id` (looked up from `req.user.id`). `markAsRead` updates `is_read = true` after verifying ownership.
+
+---
+
+### Module 10 — KPI Dashboard (`src/modules/kpi/`)
+
+All routes guarded by `requireRole('admin', 'manager', 'auditor', 'super_admin')`. Three Drizzle aggregation queries: `groupBy(assets.state)`, overdue allocations filter, `groupBy(maintenanceRequests.state)` with date range. Default date range = current calendar month.
+
+---
+
+## Components and Interfaces
+
+```typescript
+// src/lib/errors.ts
+export class AppError extends Error {
+  constructor(public status: number, message: string) { super(message); }
+}
+export class ConflictError extends AppError {
+  constructor(message: string, public data?: unknown) { super(409, message); }
+}
+
+// src/middleware/auth.ts — shape attached to req
+interface AuthUser { id: string; role: string; }
+
+// Module pattern (every module follows this)
+// module.routes.ts  →  requireRole guard  →  module.service.ts  →  db/schema (Drizzle)
+```
+
+---
+
+## API Route Inventory
+
+| Method | Path | Roles |
+|--------|------|-------|
+| POST | `/api/auth/assign-role` | admin, super_admin |
+| GET | `/api/departments` | all authenticated |
+| POST | `/api/departments` | admin, super_admin |
+| PATCH | `/api/departments/:id` | admin, super_admin |
+| DELETE | `/api/departments/:id` | admin, super_admin |
+| GET | `/api/employees` | all authenticated |
+| POST | `/api/employees` | admin, super_admin |
+| PATCH | `/api/employees/:id` | admin, super_admin |
+| GET | `/api/asset-categories` | all authenticated |
+| POST | `/api/asset-categories` | admin, super_admin |
+| GET | `/api/assets` | all authenticated |
+| POST | `/api/assets` | admin, super_admin |
+| PATCH | `/api/assets/:id/state` | admin, super_admin |
+| GET | `/api/allocations` | all (scoped by role) |
+| POST | `/api/allocations` | admin, manager, super_admin |
+| POST | `/api/allocations/:id/return` | admin, manager, super_admin |
+| GET | `/api/bookings` | all (scoped) |
+| POST | `/api/bookings` | all authenticated |
+| POST | `/api/bookings/:id/cancel` | owner, admin, super_admin |
+| GET | `/api/maintenance` | all (scoped) |
+| POST | `/api/maintenance` | all authenticated |
+| PATCH | `/api/maintenance/:id/state` | manager, admin, super_admin |
+| GET | `/api/audit/cycles` | all authenticated |
+| POST | `/api/audit/cycles` | admin, super_admin |
+| POST | `/api/audit/cycles/:id/assignments` | admin, super_admin |
+| POST | `/api/audit/findings` | auditor, admin, super_admin |
+| GET | `/api/notifications` | all (own only) |
+| PATCH | `/api/notifications/:id/read` | all (own only) |
+| GET | `/api/kpi/asset-utilization` | admin, manager, auditor, super_admin |
+| GET | `/api/kpi/overdue-allocations` | admin, manager, auditor, super_admin |
+| GET | `/api/kpi/maintenance-activity` | admin, manager, auditor, super_admin |
+
+---
+
+## Error Handling
+
+| Condition | HTTP Status | Response |
+|---|---|---|
+| Missing/invalid JWT | 401 | `{ "error": "Unauthorized" }` |
+| Insufficient role | 403 | `{ "error": "Forbidden" }` |
+| Resource not found | 404 | `{ "error": "Not found" }` |
+| Booking conflict | 409 | `{ "error": "Conflict", "nextAvailable": [...3 slots] }` |
+| Department has employees | 409 | `{ "error": "Cannot delete department with employees" }` |
+| Asset not available | 409 | `{ "error": "Asset is not available" }` |
+| Invalid state transition | 422 | `{ "error": "Invalid transition from X to Y" }` |
+| Duplicate serial_number | 409 | `{ "error": "Serial number already exists" }` |
+| Validation error | 400 | `{ "error": "...", "details": [...] }` |
+| Internal error | 500 | `{ "error": "Internal server error" }` |
+
+All errors thrown as `AppError(status, message)` and caught by the global Express error handler in `app.ts`. DB trigger exceptions (`ERRCODE '22000'`) are caught and mapped to HTTP 422.
+
+---
+
+## Data Models
+
+All Drizzle schema files live in `src/db/schema/`. See the Schema section above for full type definitions.
+
+---
+
+## Testing Strategy
+
+- Unit test each service function using Vitest with a seeded test Supabase project or local PostgreSQL via Docker.
+- Integration test each route using `supertest` against the running Express app with a seeded test DB.
+- DB trigger correctness tested by directly issuing invalid state transitions and asserting the thrown error code.
+- pg_cron SQL logic tested in isolation by running the job SQL manually against seeded data and asserting results.
+
+---
+
+## Scheduled Jobs (pg_cron — `supabase/migrations/`)
+
+- **Booking expiry** (`*/5 * * * *`): expire confirmed bookings, reset asset to `available`.
+- **Overdue return notifications** (`0 8 * * *`): insert `overdue_return` notifications for active allocations past 30 days, deduplicated within 24 h.
+- **Booking reminders** (`0 8 * * *`): insert `booking_reminder` for bookings starting within 24 h.
+- **Discrepancy reports** (`0 1 * * *`): aggregate discrepant findings into JSONB, insert `discrepancy_reports`, set cycle status to `completed`.
+
+---
+
+## Database Triggers (raw SQL — `supabase/migrations/`)
+
+- `trg_create_user_role` — AFTER INSERT ON `auth.users`; inserts `employee` role row into `user_roles`.
+- `trg_validate_asset_transition` — BEFORE UPDATE OF state ON `assets`; raises `ERRCODE '22000'` on invalid transitions.
+- `trg_validate_maintenance_transition` — same pattern on `maintenance_requests`.
+- `trg_employees_updated_at` — BEFORE UPDATE ON `employees`; sets `updated_at = now()`.
+
+---
+
+## Correctness Properties
+
+*A property is a characteristic or behavior that should hold true across all valid executions of a system.*
+
+---
+
+### Property 1: New user default role
+
+*For any* user registration request, the resulting role stored in `user_roles` is `employee`, regardless of any role fields supplied in the request body.
+
+**Validates: Requirements 1.2**
+
+---
+
+### Property 2: Privileged role assignment authorization
+
+*For any* role assignment request targeting `admin`, `manager`, or `auditor`, the operation is permitted if and only if the requesting user holds sufficient authority per the `CAN_ASSIGN` matrix (`super_admin` and `admin` can assign `admin`; `admin` and `super_admin` can assign `manager`/`auditor`). All other requesting roles are rejected with HTTP 403.
+
+**Validates: Requirements 1.3, 1.4**
+
+---
+
+### Property 3: RBAC denies unauthorized access
+
+*For any* authenticated user making a request the user's role does not permit, the system returns HTTP 403.
+
+**Validates: Requirements 1.6**
+
+---
+
+### Property 4: Admin-only write operations on directory entities
+
+*For any* department or employee creation request from a user with role `employee`, `manager`, or `auditor`, the operation is rejected and the table is unchanged.
+
+**Validates: Requirements 2.3, 2.4**
+
+---
+
+### Property 5: Department deletion blocked when employees exist
+
+*For any* department that has at least one employee record referencing it, a deletion request returns HTTP 409 and the department record is not removed.
+
+**Validates: Requirements 2.5**
+
+---
+
+### Property 6: Employee update timestamps
+
+*For any* update to an employee record, the `updated_at` field after the operation is ≥ its value before the operation.
+
+**Validates: Requirements 2.6**
+
+---
+
+### Property 7: Asset initial state
+
+*For any* valid asset registration request, the newly created asset has `state = 'available'`.
+
+**Validates: Requirements 3.6**
+
+---
+
+### Property 8: Asset state machine correctness
+
+*For any* asset state transition request, the request succeeds if and only if the `(from_state, to_state)` pair is in the permitted transitions map. Unlisted pairs return HTTP 422.
+
+**Validates: Requirements 3.4, 3.5**
+
+---
+
+### Property 9: Serial number uniqueness
+
+*For any* two asset registrations using the same `serial_number`, the second is rejected and only one asset record with that serial number exists.
+
+**Validates: Requirements 3.7**
+
+---
+
+### Property 10: Allocation atomicity and state transition
+
+*For any* asset in `available` state, a successful allocation atomically transitions the asset to `allocated`. If the asset is not `available`, the allocation is rejected with HTTP 409 and the asset state is unchanged.
+
+**Validates: Requirements 4.2, 4.3, 3.8**
+
+---
+
+### Property 11: Allocation XOR target invariant
+
+*For any* active allocation record, exactly one of `allocated_to_employee_id` and `allocated_to_department_id` is non-null.
+
+**Validates: Requirements 4.4**
+
+---
+
+### Property 12: Allocation return round-trip
+
+*For any* active allocation that is returned, the referenced asset transitions to `available` and `returned_at` is non-null.
+
+**Validates: Requirements 4.5**
+
+---
+
+### Property 13: Booking overlap rejection
+
+*For any* two overlapping time intervals on the same asset where the first booking is `confirmed`, the second booking creation returns HTTP 409.
+
+**Validates: Requirements 5.2, 5.7**
+
+---
+
+### Property 14: Booking conflict — next available slot validity
+
+*For any* conflicting booking request, the three suggested slots are each non-overlapping with existing confirmed bookings, of equal duration to the requested booking, distinct, and ordered chronologically.
+
+**Validates: Requirements 5.3**
+
+---
+
+### Property 15: Successful booking transitions asset to reserved
+
+*For any* booking creation that passes conflict validation, the referenced asset transitions to `reserved`.
+
+**Validates: Requirements 5.4**
+
+---
+
+### Property 16: Booking cancellation restores asset state
+
+*For any* `confirmed` booking cancelled before its `start_time`, the booking status becomes `cancelled` and the asset transitions to `available`.
+
+**Validates: Requirements 5.6**
+
+---
+
+### Property 17: Maintenance request creation sets under_maintenance
+
+*For any* valid maintenance request creation, the referenced asset transitions to `under_maintenance` and the request state is `requested`.
+
+**Validates: Requirements 6.4**
+
+---
+
+### Property 18: Maintenance terminal state restores asset
+
+*For any* maintenance request that transitions to `completed` or `rejected`, the referenced asset transitions to `available`.
+
+**Validates: Requirements 6.6, 6.7**
+
+---
+
+### Property 19: Maintenance state machine correctness
+
+*For any* maintenance state transition request, the request succeeds if and only if the `(from_state, to_state)` pair is in the permitted transitions map. Unlisted pairs return HTTP 422.
+
+**Validates: Requirements 6.3, 6.8**
+
+---
+
+### Property 20: Maintenance notification delivery
+
+*For any* maintenance request that transitions to `approved`, `in_progress`, `completed`, or `rejected`, a notification record exists for the `requested_by` employee referencing the request id.
+
+**Validates: Requirements 8.3**
+
+---
+
+### Property 21: Notification isolation by recipient
+
+*For any* employee, querying the notifications endpoint returns only records where `recipient_employee_id` matches that employee's id.
+
+**Validates: Requirements 8.5**
+
+---
+
+### Property 22: Notification mark-as-read idempotence
+
+*For any* notification, after a mark-as-read operation `is_read` is `true`. A second operation leaves it unchanged.
+
+**Validates: Requirements 8.6**
+
+---
+
+### Property 23: Asset utilization counts are exhaustive and accurate
+
+*For any* snapshot of the assets table, the `/kpi/asset-utilization` response contains exactly one entry per state with ≥ 1 asset, and the sum of all counts equals the total asset count.
+
+**Validates: Requirements 9.1**
+
+---
+
+### Property 24: Overdue allocation completeness
+
+*For any* set of allocations, `/kpi/overdue-allocations` includes every active allocation past the threshold and excludes all others.
+
+**Validates: Requirements 9.2**
+
+---
+
+### Property 25: Maintenance activity counts correctness
+
+*For any* date range, `/kpi/maintenance-activity` returns counts matching a direct DB query grouped by state. When no range is supplied, the result equals the current calendar month.
+
+**Validates: Requirements 9.3, 9.7**
+
+---
+
+### Property 26: KPI endpoint role restriction
+
+*For any* KPI endpoint request from an `employee`-role user, the response is HTTP 403 and no data is returned.
+
+**Validates: Requirements 9.4, 9.5**
+
+---
+
+### Property 27: Audit findings write restricted to assigned auditors on active cycles
+
+*For any* attempt to create or update an audit finding, the operation succeeds only if the requesting user is an auditor assigned to the referenced cycle while it is `active`, or holds `admin`/`super_admin`. All others receive HTTP 403.
+
+**Validates: Requirements 7.7, 7.8**
+
+---
+
+### Property 28: Orphaned allocation closure on maintenance creation
+
+*For any* maintenance request creation on an asset that has an active allocation, the active allocation record is atomically closed (`returned_at` set to now, `status = 'returned'`) within the same transaction before the asset transitions to `under_maintenance`. After the transaction, no active allocation record references that asset.
+
+**Validates: Requirements 4.7**

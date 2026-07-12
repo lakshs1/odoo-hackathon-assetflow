@@ -5,6 +5,12 @@ import authRouter from './modules/auth/auth.routes';
 import departmentsRouter from './modules/departments/departments.routes';
 import employeesRouter from './modules/employees/employees.routes';
 import assetsRouter from './modules/assets/assets.routes';
+import allocationsRouter from './modules/allocations/allocations.routes';
+import bookingsRouter from './modules/bookings/bookings.routes';
+import maintenanceRouter from './modules/maintenance/maintenance.routes';
+import auditRouter from './modules/audit/audit.routes';
+import notificationsRouter from './modules/notifications/notifications.routes';
+import kpiRouter from './modules/kpi/kpi.routes';
 
 const app = express();
 
@@ -19,6 +25,12 @@ app.use('/api/auth', authRouter);
 app.use('/api/departments', departmentsRouter);
 app.use('/api/employees', employeesRouter);
 app.use('/api', assetsRouter);
+app.use('/api/allocations', allocationsRouter);
+app.use('/api/bookings', bookingsRouter);
+app.use('/api/maintenance', maintenanceRouter);
+app.use('/api/audit', auditRouter);
+app.use('/api/notifications', notificationsRouter);
+app.use('/api/kpi', kpiRouter);
 
 // Fallback route for 404 Not Found
 app.use((req: Request, res: Response, next: NextFunction) => {

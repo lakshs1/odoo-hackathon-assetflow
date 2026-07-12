@@ -666,7 +666,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         </span>
                       </div>
                       <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                        User <strong>{getActorName(log.actor_id)}</strong> performed {log.action.toLowerCase()} on {log.entity_type} {log.details?.tag || ''}
+                        User <strong>{getActorName(log.actor_id)}</strong> performed {log.action.toLowerCase()} on {log.entity_type} {((log.details as { tag?: string } | null | undefined)?.tag) || ''}
                       </p>
                     </div>
                   </div>
