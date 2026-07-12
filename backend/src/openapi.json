@@ -1,0 +1,660 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "AssetFlow ERP Backend REST API",
+    "version": "1.0.0",
+    "description": "Comprehensive REST API documenting all asset registry, allocation, resource booking, maintenance, auditing, and organizational setup endpoints."
+  },
+  "servers": [
+    {
+      "url": "https://odooassetflow.onrender.com",
+      "description": "Production Render Server"
+    },
+    {
+      "url": "http://localhost:3000",
+      "description": "Local Development Server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Enter your Supabase JWT access token to authorize request headers."
+      }
+    },
+    "schemas": {
+      "Asset": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "categoryId": { "type": "string", "format": "uuid" },
+          "categoryName": { "type": "string" },
+          "name": { "type": "string" },
+          "serialNumber": { "type": "string" },
+          "state": { "type": "string", "enum": ["available", "allocated", "reserved", "under_maintenance", "lost", "retired", "disposed"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Allocation": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "assetId": { "type": "string", "format": "uuid" },
+          "allocatedToEmployeeId": { "type": "string", "format": "uuid", "nullable": true },
+          "allocatedToDepartmentId": { "type": "string", "format": "uuid", "nullable": true },
+          "allocatedBy": { "type": "string", "format": "uuid" },
+          "allocatedAt": { "type": "string", "format": "date-time" },
+          "returnedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "status": { "type": "string", "enum": ["active", "returned"] }
+        }
+      },
+      "Booking": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "assetId": { "type": "string", "format": "uuid" },
+          "bookedByEmployeeId": { "type": "string", "format": "uuid" },
+          "startTime": { "type": "string", "format": "date-time" },
+          "endTime": { "type": "string", "format": "date-time" },
+          "status": { "type": "string", "enum": ["confirmed", "cancelled", "completed"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "MaintenanceRequest": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "assetId": { "type": "string", "format": "uuid" },
+          "requestedBy": { "type": "string", "format": "uuid" },
+          "notes": { "type": "string", "nullable": true },
+          "state": { "type": "string", "enum": ["requested", "approved", "in_progress", "completed", "rejected"] },
+          "approvedBy": { "type": "string", "format": "uuid", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "AuditCycle": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "startDate": { "type": "string", "format": "date-time" },
+          "endDate": { "type": "string", "format": "date-time" },
+          "status": { "type": "string", "enum": ["planned", "active", "completed"] },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Returns status ok if API is up and running.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "ok" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/assign-role": {
+      "post": {
+        "summary": "Assign System Role",
+        "description": "Assigns a custom system role to a user. Restricted to super_admin and admin roles.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["targetUserId", "role"],
+                "properties": {
+                  "targetUserId": { "type": "string", "format": "uuid" },
+                  "role": { "type": "string", "enum": ["super_admin", "admin", "manager", "auditor", "employee"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success message.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string", "example": "Role assigned successfully" }
+                  }
+                }
+              }
+            }
+          },
+          "403": { "description": "Forbidden due to insufficient role permissions." }
+        }
+      }
+    },
+    "/api/departments": {
+      "get": {
+        "summary": "List Departments",
+        "description": "Retrieve all departments.",
+        "responses": {
+          "200": {
+            "description": "List of departments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string", "format": "uuid" },
+                      "name": { "type": "string" },
+                      "createdAt": { "type": "string", "format": "date-time" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Department",
+        "description": "Restricted to admin / super_admin.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Department created." }
+        }
+      }
+    },
+    "/api/employees": {
+      "get": {
+        "summary": "List Employees",
+        "description": "Returns list of employee profiles.",
+        "responses": {
+          "200": { "description": "List of employees." }
+        }
+      },
+      "post": {
+        "summary": "Register Employee",
+        "description": "Create a new employee profile. Restricted to admin / super_admin.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["userId", "departmentId", "fullName", "employeeCode"],
+                "properties": {
+                  "userId": { "type": "string", "format": "uuid" },
+                  "departmentId": { "type": "string", "format": "uuid" },
+                  "fullName": { "type": "string" },
+                  "employeeCode": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Employee created." }
+        }
+      }
+    },
+    "/api/asset-categories": {
+      "get": {
+        "summary": "List Asset Categories",
+        "description": "Retrieve categories for assets.",
+        "responses": {
+          "200": { "description": "List of categories." }
+        }
+      },
+      "post": {
+        "summary": "Create Asset Category",
+        "description": "Restricted to admin/super_admin.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Category created." }
+        }
+      }
+    },
+    "/api/assets": {
+      "get": {
+        "summary": "List Assets",
+        "responses": {
+          "200": {
+            "description": "List of assets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Asset" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Register New Asset",
+        "description": "Restricted to admin/super_admin.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "categoryId", "serialNumber"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "categoryId": { "type": "string", "format": "uuid" },
+                  "serialNumber": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Asset registered successfully.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Asset" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assets/{id}/state": {
+      "patch": {
+        "summary": "Transition Asset State",
+        "description": "Restricted to admin/super_admin.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["state"],
+                "properties": {
+                  "state": { "type": "string", "enum": ["available", "allocated", "reserved", "under_maintenance", "lost", "retired", "disposed"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "State transitioned successfully." }
+        }
+      }
+    },
+    "/api/allocations": {
+      "get": {
+        "summary": "List Allocations",
+        "responses": {
+          "200": {
+            "description": "List of allocations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Allocation" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Allocation",
+        "description": "Restricted to admin / manager / super_admin.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["assetId"],
+                "properties": {
+                  "assetId": { "type": "string", "format": "uuid" },
+                  "allocatedToEmployeeId": { "type": "string", "format": "uuid" },
+                  "allocatedToDepartmentId": { "type": "string", "format": "uuid" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Allocation created." }
+        }
+      }
+    },
+    "/api/allocations/{id}/return": {
+      "post": {
+        "summary": "Return Allocated Asset",
+        "description": "Marks allocation as returned.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Asset returned." }
+        }
+      }
+    },
+    "/api/bookings": {
+      "get": {
+        "summary": "List Resource Bookings",
+        "responses": {
+          "200": {
+            "description": "List of bookings.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Booking" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Resource Booking",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["assetId", "startTime", "endTime"],
+                "properties": {
+                  "assetId": { "type": "string", "format": "uuid" },
+                  "startTime": { "type": "string", "format": "date-time" },
+                  "endTime": { "type": "string", "format": "date-time" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Booking slot reserved successfully." },
+          "409": { "description": "Booking slot overlap conflict." }
+        }
+      }
+    },
+    "/api/bookings/{id}/cancel": {
+      "post": {
+        "summary": "Cancel Booking Slot",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Booking cancelled successfully." }
+        }
+      }
+    },
+    "/api/maintenance": {
+      "get": {
+        "summary": "List Maintenance Requests",
+        "responses": {
+          "200": { "description": "List of maintenance requests." }
+        }
+      },
+      "post": {
+        "summary": "Create Maintenance Request",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["assetId"],
+                "properties": {
+                  "assetId": { "type": "string", "format": "uuid" },
+                  "notes": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Maintenance request raised." }
+        }
+      }
+    },
+    "/api/maintenance/{id}/state": {
+      "patch": {
+        "summary": "Update Maintenance Request State",
+        "description": "Transition the state of a maintenance request.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["state"],
+                "properties": {
+                  "state": { "type": "string", "enum": ["requested", "approved", "in_progress", "completed", "rejected"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Maintenance state updated successfully." }
+        }
+      }
+    },
+    "/api/audit/cycles": {
+      "get": {
+        "summary": "List Audit Cycles",
+        "responses": {
+          "200": { "description": "List of cycles." }
+        }
+      },
+      "post": {
+        "summary": "Create Audit Cycle",
+        "description": "Restricted to admin/super_admin.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "startDate", "endDate"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "startDate": { "type": "string", "format": "date-time" },
+                  "endDate": { "type": "string", "format": "date-time" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Audit cycle created." }
+        }
+      }
+    },
+    "/api/audit/cycles/{id}/assignments": {
+      "post": {
+        "summary": "Assign Auditor to Cycle",
+        "description": "Restricted to admin/super_admin.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["auditorEmployeeId"],
+                "properties": {
+                  "auditorEmployeeId": { "type": "string", "format": "uuid" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Auditor assigned successfully." }
+        }
+      }
+    },
+    "/api/audit/findings": {
+      "post": {
+        "summary": "Log Verification Findings",
+        "description": "Creates finding entry and auto-generates discrepancy reports if mismatch found.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["auditCycleId", "assetId", "expectedState", "observedState"],
+                "properties": {
+                  "auditCycleId": { "type": "string", "format": "uuid" },
+                  "assetId": { "type": "string", "format": "uuid" },
+                  "expectedState": { "type": "string" },
+                  "observedState": { "type": "string" },
+                  "notes": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Verification finding logged successfully." }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "summary": "List User Notifications",
+        "responses": {
+          "200": { "description": "List of active alerts." }
+        }
+      }
+    },
+    "/api/notifications/{id}/read": {
+      "patch": {
+        "summary": "Mark Notification as Read",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Notification dismissed." }
+        }
+      }
+    },
+    "/api/kpi/dashboard": {
+      "get": {
+        "summary": "Get KPI Dashboard Summaries",
+        "description": "Returns counts of total assets, active allocations, open maintenance tickets, and auditor counts.",
+        "responses": {
+          "200": {
+            "description": "Dashboard stats.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "totalAssets": { "type": "integer", "example": 14 },
+                    "allocatedAssets": { "type": "integer", "example": 5 },
+                    "maintenanceCount": { "type": "integer", "example": 2 },
+                    "auditorCount": { "type": "integer", "example": 3 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

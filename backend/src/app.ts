@@ -1,5 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import swaggerUi from 'swagger-ui-express';
+import openApiSpec from './openapi.json';
 import { AppError, ConflictError } from './lib/errors';
 import authRouter from './modules/auth/auth.routes';
 import departmentsRouter from './modules/departments/departments.routes';
@@ -16,6 +18,8 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok' });
