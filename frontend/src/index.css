@@ -637,6 +637,16 @@ body {
   color: var(--text-muted);
 }
 
+select.form-input, select.role-badge-selector, select {
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+}
+
+select option {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
