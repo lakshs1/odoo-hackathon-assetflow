@@ -2,6 +2,8 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import { AppError, ConflictError } from './lib/errors';
 import authRouter from './modules/auth/auth.routes';
+import departmentsRouter from './modules/departments/departments.routes';
+import employeesRouter from './modules/employees/employees.routes';
 
 const app = express();
 
@@ -13,6 +15,8 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 app.use('/api/auth', authRouter);
+app.use('/api/departments', departmentsRouter);
+app.use('/api/employees', employeesRouter);
 
 // Fallback route for 404 Not Found
 app.use((req: Request, res: Response, next: NextFunction) => {
