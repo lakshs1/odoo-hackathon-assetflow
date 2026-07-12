@@ -15,6 +15,13 @@
       "when": 1783840412982,
       "tag": "0001_freezing_riptide",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783841058005,
+      "tag": "0002_amazing_chat",
+      "breakpoints": true
     }
   ]
 }

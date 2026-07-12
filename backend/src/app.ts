@@ -4,6 +4,7 @@ import { AppError, ConflictError } from './lib/errors';
 import authRouter from './modules/auth/auth.routes';
 import departmentsRouter from './modules/departments/departments.routes';
 import employeesRouter from './modules/employees/employees.routes';
+import assetsRouter from './modules/assets/assets.routes';
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.get('/health', (req: Request, res: Response) => {
 app.use('/api/auth', authRouter);
 app.use('/api/departments', departmentsRouter);
 app.use('/api/employees', employeesRouter);
+app.use('/api', assetsRouter);
 
 // Fallback route for 404 Not Found
 app.use((req: Request, res: Response, next: NextFunction) => {
