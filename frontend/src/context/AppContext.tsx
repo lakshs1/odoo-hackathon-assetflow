@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../supabase';
+import { api } from '../lib/api';
 
 const ROLE = {
   ADMIN: 'Admin',
@@ -69,6 +70,7 @@ type AuditVerificationStatus = (typeof AUDIT_RESULT_STATE)[keyof typeof AUDIT_RE
 
 export interface Employee {
   id: string;
+  userId?: string;
   name: string;
   email: string;
   department_id: string | null;
@@ -242,8 +244,152 @@ const initialMockAllocations: Allocation[] = [
   { id: 'alloc-2', asset_id: 'asset-5', allocated_to_type: 'Employee', employee_id: 'emp-2', department_id: null, allocated_by: 'emp-4', allocated_at: '2024-03-22T09:00:00Z', expected_return_date: '2025-03-22', returned_at: null, check_in_notes: null, status: ALLOCATION_STATE.OVERDUE },
 ];
 
+// Entity Mappings (Backend <-> Frontend)
+const mapBackendStateToFrontend = (state: string): AssetStatus => {
+  switch (state) {
+    case 'available': return 'Available';
+    case 'allocated': return 'Allocated';
+    case 'reserved': return 'Reserved';
+    case 'under_maintenance': return 'Under Maintenance';
+    case 'lost': return 'Lost';
+    case 'retired': return 'Retired';
+    case 'disposed': return 'Disposed';
+    default: return 'Available';
+  }
+};
+
+const mapBackendAssetToFrontend = (a: any, index: number): Asset => {
+  return {
+    id: a.id,
+    name: a.name,
+    category_id: a.categoryId,
+    asset_tag: `AF-${String(index + 1).padStart(4, '0')}`,
+    serial_number: a.serialNumber,
+    acquisition_date: new Date(a.createdAt || Date.now()).toISOString().split('T')[0],
+    acquisition_cost: 1500,
+    condition: 'Good',
+    location: 'HQ - Floor 3',
+    photo_url: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=300&q=80',
+    documents: [],
+    is_shared: false,
+    status: mapBackendStateToFrontend(a.state),
+    custom_fields: {},
+  };
+};
+
+const mapBackendAllocationToFrontend = (a: any): Allocation => {
+  return {
+    id: a.id,
+    asset_id: a.assetId,
+    allocated_to_type: a.allocatedToEmployeeId ? 'Employee' : 'Department',
+    employee_id: a.allocatedToEmployeeId || null,
+    department_id: a.allocatedToDepartmentId || null,
+    allocated_by: a.allocatedBy,
+    allocated_at: a.allocatedAt,
+    expected_return_date: null,
+    returned_at: a.returnedAt || null,
+    check_in_notes: null,
+    status: a.status === 'active' ? 'Active' : 'Returned',
+  };
+};
+
+const mapBackendBookingToFrontend = (b: any): Booking => {
+  return {
+    id: b.id,
+    asset_id: b.assetId,
+    booked_by: b.bookedByEmployeeId,
+    start_time: b.startTime,
+    end_time: b.endTime,
+    status: b.status === 'confirmed' ? 'Upcoming' : b.status === 'cancelled' ? 'Cancelled' : 'Completed',
+  };
+};
+
+const mapBackendMaintenanceStateToFrontend = (state: string): MaintenanceStatus => {
+  switch (state) {
+    case 'requested': return 'Pending';
+    case 'approved': return 'Approved';
+    case 'in_progress': return 'In Progress';
+    case 'completed': return 'Resolved';
+    case 'rejected': return 'Rejected';
+    default: return 'Pending';
+  }
+};
+
+const mapBackendMaintenanceToFrontend = (m: any): MaintenanceRequest => {
+  return {
+    id: m.id,
+    asset_id: m.assetId,
+    requested_by: m.requestedBy,
+    description: m.notes || 'No description provided.',
+    priority: 'Medium',
+    photo_url: null,
+    status: mapBackendMaintenanceStateToFrontend(m.state),
+    assigned_technician: null,
+    approved_by: m.approvedBy || null,
+    resolution_notes: null,
+    resolved_at: m.state === 'completed' ? m.updatedAt : null,
+    created_at: m.createdAt,
+  };
+};
+
+const mapBackendAuditToFrontend = (a: any): AuditCycle => {
+  return {
+    id: a.id,
+    name: a.name,
+    scope_type: 'All',
+    scope_department_id: null,
+    scope_location: null,
+    start_date: a.startDate,
+    end_date: a.endDate,
+    status: a.status === 'planned' ? 'Draft' : a.status === 'active' ? 'Active' : 'Completed',
+  };
+};
+
+const mapBackendFindingToFrontend = (f: any): AuditResult => {
+  return {
+    id: f.id,
+    audit_cycle_id: f.auditCycleId,
+    asset_id: f.assetId,
+    auditor_id: f.createdBy,
+    verification_status: f.discrepancyFlag ? 'Damaged' : 'Verified',
+    notes: f.notes || null,
+    verified_at: new Date().toISOString(),
+  };
+};
+
+const mapBackendToFrontendRole = (role: string): Role => {
+  switch (role) {
+    case 'super_admin':
+    case 'admin':
+      return 'Admin';
+    case 'manager':
+      return 'Asset Manager';
+    case 'auditor':
+      return 'Department Head';
+    case 'employee':
+    default:
+      return 'Employee';
+  }
+};
+
+const mapFrontendToBackendRole = (role: string): string => {
+  switch (role) {
+    case 'Admin':
+      return 'admin';
+    case 'Asset Manager':
+      return 'manager';
+    case 'Department Head':
+      return 'auditor';
+    case 'Employee':
+    default:
+      return 'employee';
+  }
+};
+
 interface AppContextType {
   isLinked: boolean;
+  session: any;
+  authLoading: boolean;
   currentRole: Role;
   currentEmployee: Employee;
   employees: Employee[];
@@ -320,6 +466,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [accentHoverColor, setAccentHoverColorState] = useState(() => localStorage.getItem('assetflow-accent-hover') || '#4f46e5');
   const [bgColor, setBgColorState] = useState(() => localStorage.getItem('assetflow-bg') || '#000000');
 
+  const [session, setSession] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(isLinked);
+
   const [currentRole, setCurrentRole] = useState<Role>(ROLE.ADMIN);
   const [employees, setEmployees] = useState<Employee[]>(initialMockEmployees);
   const [departments, setDepartments] = useState<Department[]>(initialMockDepartments);
@@ -347,7 +496,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     document.documentElement.style.setProperty('--bg-app', bgColor);
   }, [accentColor, accentHoverColor, bgColor]);
 
+  // Auth Session State syncing
   useEffect(() => {
+    if (!isLinked) {
+      setAuthLoading(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [isLinked]);
+
+  const fetchData = async () => {
     if (!isLinked) {
       setLogs([{
         id: 'log-1',
@@ -361,44 +529,145 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    const fetchData = async () => {
-      try {
-        const tables = await Promise.all([
-          supabase.from('employees').select('*'),
-          supabase.from('departments').select('*'),
-          supabase.from('asset_categories').select('*'),
-          supabase.from('assets').select('*'),
-          supabase.from('allocations').select('*'),
-          supabase.from('transfers').select('*'),
-          supabase.from('bookings').select('*'),
-          supabase.from('maintenance_requests').select('*'),
-          supabase.from('audit_cycles').select('*'),
-          supabase.from('audit_results').select('*'),
-          supabase.from('notifications').select('*'),
-          supabase.from('activity_logs').select('*'),
-          supabase.from('asset_history').select('*'),
-        ]);
+    if (!session) return;
 
-        if (tables[0].data) setEmployees(tables[0].data as Employee[]);
-        if (tables[1].data) setDepartments(tables[1].data as Department[]);
-        if (tables[2].data) setCategories(tables[2].data as AssetCategory[]);
-        if (tables[3].data) setAssets(tables[3].data as Asset[]);
-        if (tables[4].data) setAllocations(tables[4].data as Allocation[]);
-        if (tables[5].data) setTransfers(tables[5].data as Transfer[]);
-        if (tables[6].data) setBookings(tables[6].data as Booking[]);
-        if (tables[7].data) setMaintenanceRequests(tables[7].data as MaintenanceRequest[]);
-        if (tables[8].data) setAuditCycles(tables[8].data as AuditCycle[]);
-        if (tables[9].data) setAuditResults(tables[9].data as AuditResult[]);
-        if (tables[10].data) setNotifications(tables[10].data as Notification[]);
-        if (tables[11].data) setLogs(tables[11].data as ActivityLog[]);
-        if (tables[12].data) setHistory(tables[12].data as AssetHistory[]);
-      } catch (error) {
-        console.error('Error loading data from Supabase:', error);
+    try {
+      const [depts, cats, asts, allocs, bks, maint, cyc, rolesData, historyData] = await Promise.all([
+        api.get('/api/departments'),
+        api.get('/api/asset-categories'),
+        api.get('/api/assets'),
+        api.get('/api/allocations'),
+        api.get('/api/bookings'),
+        api.get('/api/maintenance'),
+        api.get('/api/audit/cycles'),
+        supabase.from('user_roles').select('*'), // direct db query for roles
+        supabase.from('asset_history').select('*'), // direct db query for history logs
+      ]);
+
+      const rolesMap = new Map<string, string>();
+      if (rolesData.data) {
+        rolesData.data.forEach((r: any) => {
+          rolesMap.set(r.user_id, r.role);
+        });
       }
-    };
 
+      if (historyData.data) {
+        setHistory(historyData.data as AssetHistory[]);
+      }
+
+      // Map departments
+      const mappedDepts: Department[] = depts.map((d: any) => ({
+        id: d.id,
+        name: d.name,
+        head_id: null,
+        parent_department_id: null,
+        status: 'Active',
+      }));
+      setDepartments(mappedDepts);
+
+      // Map categories
+      const mappedCats: AssetCategory[] = cats.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        custom_fields: {},
+      }));
+      setCategories(mappedCats);
+
+      // Fetch employees list & map them
+      const employeesList = await api.get('/api/employees');
+      const mappedEmployees: Employee[] = employeesList.map((e: any) => {
+        const dbRole = rolesMap.get(e.userId) || 'employee';
+        return {
+          id: e.id,
+          userId: e.userId,
+          name: e.fullName,
+          email: `${e.fullName.toLowerCase().replace(/\s+/g, '')}@assetflow.com`,
+          department_id: e.departmentId,
+          role: mapBackendToFrontendRole(dbRole),
+          status: 'Active',
+        };
+      });
+      setEmployees(mappedEmployees);
+
+      // Map assets
+      const mappedAssets: Asset[] = asts.map((a: any, index: number) => 
+        mapBackendAssetToFrontend(a, index)
+      );
+      setAssets(mappedAssets);
+
+      // Map allocations
+      const mappedAllocations: Allocation[] = allocs.map((a: any) => 
+        mapBackendAllocationToFrontend(a)
+      );
+      setAllocations(mappedAllocations);
+
+      // Map bookings
+      const mappedBookings: Booking[] = bks.map((b: any) => 
+        mapBackendBookingToFrontend(b)
+      );
+      setBookings(mappedBookings);
+
+      // Map maintenance requests
+      const mappedMaint: MaintenanceRequest[] = maint.map((m: any) => 
+        mapBackendMaintenanceToFrontend(m)
+      );
+      setMaintenanceRequests(mappedMaint);
+
+      // Map audit cycles
+      const mappedCycles: AuditCycle[] = cyc.map((c: any) => 
+        mapBackendAuditToFrontend(c)
+      );
+      setAuditCycles(mappedCycles);
+
+      // Fetch and map findings for active cycles
+      const activeCycles = mappedCycles.filter(c => c.status === 'Active');
+      const findingsPromises = activeCycles.map(c => api.get(`/api/audit/cycles/${c.id}/findings`).catch(() => []));
+      const allFindings = await Promise.all(findingsPromises);
+      const mappedFindings: AuditResult[] = allFindings.flat().map((f: any) => 
+        mapBackendFindingToFrontend(f)
+      );
+      setAuditResults(mappedFindings);
+
+      // Map current active employee & currentRole
+      const currentUserId = session.user.id;
+      const matchedEmp = mappedEmployees.find((e: any) => e.userId === currentUserId);
+      if (matchedEmp) {
+        setCurrentEmployee(matchedEmp);
+        setCurrentRole(matchedEmp.role);
+      } else {
+        const currentSessionRole = session.user.app_metadata?.role || 'employee';
+        const defaultEmp: Employee = {
+          id: 'temp-emp',
+          userId: currentUserId,
+          name: session.user.email?.split('@')[0] || 'User',
+          email: session.user.email || '',
+          department_id: null,
+          role: mapBackendToFrontendRole(currentSessionRole),
+          status: 'Active',
+        };
+        setCurrentEmployee(defaultEmp);
+        setCurrentRole(defaultEmp.role);
+      }
+
+      setLogs([
+        {
+          id: 'log-live-1',
+          actor_id: currentUserId,
+          action: 'System Sync',
+          entity_type: 'system',
+          entity_id: '0000',
+          details: { message: 'Database fully synchronized with Express API.' },
+          created_at: new Date().toISOString(),
+        }
+      ]);
+    } catch (error) {
+      console.error('Error loading data from Express API:', error);
+    }
+  };
+
+  useEffect(() => {
     void fetchData();
-  }, [isLinked]);
+  }, [isLinked, session]);
 
   const toggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
@@ -432,6 +701,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const registerAsset = async (data: Partial<Asset>) => {
+    if (isLinked) {
+      await api.post('/api/assets', {
+        name: data.name || '',
+        categoryId: data.category_id || '',
+        serialNumber: data.serial_number || `SN-${Math.floor(100000 + Math.random() * 900000)}`,
+      });
+      void fetchData();
+      return;
+    }
+
     const newAsset: Asset = {
       id: crypto.randomUUID(),
       name: data.name || '',
@@ -449,15 +728,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       custom_fields: data.custom_fields,
     };
 
-    if (isLinked) {
-      await supabase.from('assets').insert([newAsset]);
-      return;
-    }
-
     setAssets((prev) => [...prev, newAsset]);
   };
 
   const allocateAsset = async (data: Partial<Allocation>) => {
+    if (isLinked) {
+      try {
+        const payload = {
+          assetId: data.asset_id || '',
+          allocatedToEmployeeId: data.allocated_to_type === 'Employee' ? data.employee_id : undefined,
+          allocatedToDepartmentId: data.allocated_to_type === 'Department' ? data.department_id : undefined,
+        };
+        await api.post('/api/allocations', payload);
+        void fetchData();
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message || 'Allocation failed' };
+      }
+    }
+
     const targetAsset = assets.find((asset) => asset.id === data.asset_id);
     if (!targetAsset) return { success: false, error: 'Asset not found.' };
 
@@ -491,11 +780,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: ALLOCATION_STATE.ACTIVE,
     };
 
-    if (isLinked) {
-      await supabase.from('allocations').insert([newAllocation]);
-      return { success: true };
-    }
-
     setAllocations((prev) => [...prev, newAllocation]);
     setAssets((prev) =>
       prev.map((asset) =>
@@ -519,24 +803,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       created_at: new Date().toISOString(),
     };
 
-    if (isLinked) {
-      await supabase.from('transfers').insert([newTransfer]);
-      return;
-    }
-
     setTransfers((prev) => [...prev, newTransfer]);
   };
 
   const approveTransfer = async (id: string) => {
-    if (isLinked) {
-      await supabase.from('transfers').update({
-        status: TRANSFER_STATE.APPROVED,
-        approved_by: currentEmployee.id,
-        approved_at: new Date().toISOString(),
-      }).eq('id', id);
-      return;
-    }
-
     setTransfers((prev) =>
       prev.map((transfer) =>
         transfer.id === id
@@ -547,14 +817,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const rejectTransfer = async (id: string, reason: string) => {
-    if (isLinked) {
-      await supabase.from('transfers').update({
-        status: TRANSFER_STATE.REJECTED,
-        rejection_reason: reason,
-      }).eq('id', id);
-      return;
-    }
-
     setTransfers((prev) =>
       prev.map((transfer) =>
         transfer.id === id ? { ...transfer, status: TRANSFER_STATE.REJECTED, rejection_reason: reason } : transfer
@@ -563,21 +825,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const returnAsset = async (allocationId: string, notes: string, condition: Asset['condition']) => {
-    const allocation = allocations.find((item) => item.id === allocationId);
-    if (!allocation) return;
-
     if (isLinked) {
-      await supabase.from('allocations').update({
-        status: ALLOCATION_STATE.RETURNED,
-        returned_at: new Date().toISOString(),
-        check_in_notes: notes,
-      }).eq('id', allocationId);
-      await supabase.from('assets').update({
-        status: ASSET_STATE.AVAILABLE,
-        condition,
-      }).eq('id', allocation.asset_id);
+      await api.post(`/api/allocations/${allocationId}/return`);
+      void fetchData();
       return;
     }
+
+    const allocation = allocations.find((item) => item.id === allocationId);
+    if (!allocation) return;
 
     setAllocations((prev) =>
       prev.map((item) =>
@@ -594,6 +849,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const createBooking = async (data: Partial<Booking>) => {
+    if (isLinked) {
+      try {
+        await api.post('/api/bookings', {
+          assetId: data.asset_id || '',
+          startTime: data.start_time || '',
+          endTime: data.end_time || '',
+        });
+        void fetchData();
+        return { success: true };
+      } catch (err: any) {
+        return { success: false, error: err.message || 'Booking overlap or conflict occurred.' };
+      }
+    }
+
     const hasOverlap = bookings.some(
       (booking) =>
         booking.asset_id === data.asset_id &&
@@ -615,25 +884,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: BOOKING_STATE.UPCOMING,
     };
 
-    if (isLinked) {
-      const { error } = await supabase.from('bookings').insert([newBooking]);
-      if (error) return { success: false, error: error.message };
-      return { success: true };
-    }
-
     setBookings((prev) => [...prev, newBooking]);
     return { success: true };
   };
 
   const cancelBooking = async (id: string) => {
     if (isLinked) {
-      await supabase.from('bookings').update({ status: BOOKING_STATE.CANCELLED }).eq('id', id);
+      await api.post(`/api/bookings/${id}/cancel`);
+      void fetchData();
       return;
     }
     setBookings((prev) => prev.map((booking) => (booking.id === id ? { ...booking, status: BOOKING_STATE.CANCELLED } : booking)));
   };
 
   const raiseMaintenance = async (data: Partial<MaintenanceRequest>) => {
+    if (isLinked) {
+      await api.post('/api/maintenance', {
+        assetId: data.asset_id || '',
+        notes: data.description || '',
+      });
+      void fetchData();
+      return;
+    }
+
     const newRequest: MaintenanceRequest = {
       id: crypto.randomUUID(),
       asset_id: data.asset_id || '',
@@ -649,20 +922,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       created_at: new Date().toISOString(),
     };
 
-    if (isLinked) {
-      await supabase.from('maintenance_requests').insert([newRequest]);
-      return;
-    }
-
     setMaintenanceRequests((prev) => [...prev, newRequest]);
   };
 
   const approveMaintenance = async (id: string) => {
     if (isLinked) {
-      await supabase.from('maintenance_requests').update({
-        status: MAINTENANCE_STATE.APPROVED,
-        approved_by: currentEmployee.id,
-      }).eq('id', id);
+      await api.patch(`/api/maintenance/${id}/state`, { state: 'approved' });
+      void fetchData();
       return;
     }
     setMaintenanceRequests((prev) =>
@@ -674,10 +940,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const rejectMaintenance = async (id: string) => {
     if (isLinked) {
-      await supabase.from('maintenance_requests').update({
-        status: MAINTENANCE_STATE.REJECTED,
-        approved_by: currentEmployee.id,
-      }).eq('id', id);
+      await api.patch(`/api/maintenance/${id}/state`, { state: 'rejected' });
+      void fetchData();
       return;
     }
     setMaintenanceRequests((prev) =>
@@ -689,10 +953,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const assignTechnician = async (id: string, technician: string) => {
     if (isLinked) {
-      await supabase.from('maintenance_requests').update({
-        status: MAINTENANCE_STATE.TECHNICIAN_ASSIGNED,
-        assigned_technician: technician,
-      }).eq('id', id);
+      await api.patch(`/api/maintenance/${id}/state`, { state: 'in_progress' });
+      void fetchData();
       return;
     }
     setMaintenanceRequests((prev) =>
@@ -704,11 +966,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resolveMaintenance = async (id: string, notes: string) => {
     if (isLinked) {
-      await supabase.from('maintenance_requests').update({
-        status: MAINTENANCE_STATE.RESOLVED,
-        resolution_notes: notes,
-        resolved_at: new Date().toISOString(),
-      }).eq('id', id);
+      await api.patch(`/api/maintenance/${id}/state`, { state: 'completed' });
+      void fetchData();
       return;
     }
     setMaintenanceRequests((prev) =>
@@ -718,7 +977,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const createAuditCycle = async (data: Partial<AuditCycle>, _auditors: string[]) => {
+  const createAuditCycle = async (data: Partial<AuditCycle>, auditors: string[]) => {
+    if (isLinked) {
+      const newCycle = await api.post('/api/audit/cycles', {
+        name: data.name || '',
+        startDate: data.start_date || '',
+        endDate: data.end_date || '',
+        status: 'active',
+      });
+      
+      if (auditors && auditors.length > 0) {
+        await Promise.all(
+          auditors.map((auditorId) =>
+            api.post(`/api/audit/cycles/${newCycle.id}/assignments`, { auditorEmployeeId: auditorId })
+          )
+        );
+      }
+      void fetchData();
+      return;
+    }
+
     const newCycle: AuditCycle = {
       id: crypto.randomUUID(),
       name: data.name || '',
@@ -730,15 +1008,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: AUDIT_STATE.DRAFT,
     };
 
-    if (isLinked) {
-      await supabase.from('audit_cycles').insert([newCycle]);
-      return;
-    }
-
     setAuditCycles((prev) => [...prev, newCycle]);
   };
 
   const submitAuditResult = async (data: Partial<AuditResult>) => {
+    if (isLinked) {
+      await api.post('/api/audit/findings', {
+        auditCycleId: data.audit_cycle_id || '',
+        assetId: data.asset_id || '',
+        expectedState: 'available',
+        observedState: data.verification_status === 'Verified' ? 'available' : 'under_maintenance',
+        notes: data.notes || '',
+      });
+      void fetchData();
+      return;
+    }
+
     const newResult: AuditResult = {
       id: crypto.randomUUID(),
       audit_cycle_id: data.audit_cycle_id || '',
@@ -749,31 +1034,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       verified_at: new Date().toISOString(),
     };
 
-    if (isLinked) {
-      await supabase.from('audit_results').insert([newResult]);
-      return;
-    }
-
     setAuditResults((prev) => [...prev.filter((result) => !(result.audit_cycle_id === newResult.audit_cycle_id && result.asset_id === newResult.asset_id)), newResult]);
   };
 
   const closeAuditCycle = async (id: string) => {
-    if (isLinked) {
-      await supabase.from('audit_cycles').update({ status: AUDIT_STATE.COMPLETED }).eq('id', id);
-      return;
-    }
     setAuditCycles((prev) => prev.map((cycle) => (cycle.id === id ? { ...cycle, status: AUDIT_STATE.COMPLETED } : cycle)));
   };
 
   const dismissNotification = async (id: string) => {
-    if (isLinked) {
-      await supabase.from('notifications').update({ is_read: true }).eq('id', id);
-      return;
-    }
     setNotifications((prev) => prev.map((notification) => (notification.id === id ? { ...notification, is_read: true } : notification)));
   };
 
   const addCustomDepartment = async (data: Partial<Department>) => {
+    if (isLinked) {
+      await api.post('/api/departments', { name: data.name || '' });
+      void fetchData();
+      return;
+    }
+
     const newDepartment: Department = {
       id: crypto.randomUUID(),
       name: data.name || '',
@@ -781,31 +1059,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       parent_department_id: data.parent_department_id || null,
       status: 'Active',
     };
-    if (isLinked) {
-      await supabase.from('departments').insert([newDepartment]);
-      return;
-    }
     setDepartments((prev) => [...prev, newDepartment]);
   };
 
   const addCustomCategory = async (data: Partial<AssetCategory>) => {
+    if (isLinked) {
+      await api.post('/api/asset-categories', { name: data.name || '' });
+      void fetchData();
+      return;
+    }
+
     const newCategory: AssetCategory = {
       id: crypto.randomUUID(),
       name: data.name || '',
       custom_fields: data.custom_fields || {},
     };
-    if (isLinked) {
-      await supabase.from('asset_categories').insert([newCategory]);
-      return;
-    }
     setCategories((prev) => [...prev, newCategory]);
   };
 
   const promoteEmployee = async (empId: string, role: Role) => {
     if (isLinked) {
-      await supabase.from('employees').update({ role }).eq('id', empId);
+      const emp = employees.find((e) => e.id === empId);
+      if (emp && emp.userId) {
+        await api.post('/api/auth/assign-role', {
+          targetUserId: emp.userId,
+          role: mapFrontendToBackendRole(role),
+        });
+        void fetchData();
+      }
       return;
     }
+
     setEmployees((prev) => prev.map((employee) => (employee.id === empId ? { ...employee, role } : employee)));
   };
 
@@ -813,6 +1097,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider
       value={{
         isLinked,
+        session,
+        authLoading,
         currentRole,
         currentEmployee,
         employees,
@@ -871,3 +1157,4 @@ export const useApp = () => {
   }
   return context;
 };
+

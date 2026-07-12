@@ -16,9 +16,10 @@ import { MaintenanceView } from './components/views/MaintenanceView';
 import { AuditView } from './components/views/AuditView';
 import { ReportsView } from './components/views/ReportsView';
 import { OrgSetupView } from './components/views/OrgSetupView';
+import { LoginView } from './components/views/LoginView';
 
 function AppContent() {
-  const { currentRole, preset } = useApp();
+  const { currentRole, preset, isLinked, session, authLoading } = useApp();
   const [activeView, setActiveView] = useState('dashboard');
   const [showSettings, setShowSettings] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -88,6 +89,34 @@ function AppContent() {
         />;
     }
   };
+
+  // 1. If loading Supabase session
+  if (isLinked && authLoading) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh',
+        backgroundColor: 'var(--bg-app)',
+        color: 'var(--accent)',
+        fontWeight: 600,
+        fontFamily: 'var(--font-sans)',
+      }}>
+        Loading Session...
+      </div>
+    );
+  }
+
+  // 2. If connected to Supabase but not signed in
+  if (isLinked && !session) {
+    return (
+      <div className={`app-container preset-${preset}`} style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <ThemeBackgroundGraphics />
+        <LoginView onAuthSuccess={() => void 0} />
+      </div>
+    );
+  }
 
   return (
     <div className={`app-container preset-${preset}`}>
