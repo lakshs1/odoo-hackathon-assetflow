@@ -4,6 +4,8 @@ import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { CommandPalette } from './components/CommandPalette';
 import { SettingsModal } from './components/SettingsModal';
+import { CustomizeModal } from './components/CustomizeModal';
+import { ThemeBackgroundGraphics } from './components/ThemeBackgroundGraphics';
 
 // Views
 import { DashboardView } from './components/views/DashboardView';
@@ -16,11 +18,12 @@ import { ReportsView } from './components/views/ReportsView';
 import { OrgSetupView } from './components/views/OrgSetupView';
 
 function AppContent() {
-  const { currentRole } = useApp();
+  const { currentRole, preset } = useApp();
   const [activeView, setActiveView] = useState('dashboard');
   const [showSettings, setShowSettings] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [showCustomize, setShowCustomize] = useState(false);
 
   // Auto-redirect if role changes and active view isn't allowed
   useEffect(() => {
@@ -87,12 +90,14 @@ function AppContent() {
   };
 
   return (
-    <div className="app-container">
+    <div className={`app-container preset-${preset}`}>
+      <ThemeBackgroundGraphics />
       {/* Sidebar Navigation */}
       <Sidebar 
         activeView={activeView} 
         setActiveView={setActiveView} 
         openSettings={() => setShowSettings(true)}
+        openCustomize={() => setShowCustomize(true)}
       />
 
       {/* Main View Panel */}
@@ -118,6 +123,11 @@ function AppContent() {
       {/* Supabase Linkage Settings Modal */}
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
+      )}
+
+      {/* Theme Customizer Modal */}
+      {showCustomize && (
+        <CustomizeModal onClose={() => setShowCustomize(false)} />
       )}
     </div>
   );

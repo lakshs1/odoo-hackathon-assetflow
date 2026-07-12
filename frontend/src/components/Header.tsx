@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, Search } from 'lucide-react';
+import { Bell, Search, Sun, Moon } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 interface HeaderProps {
@@ -8,7 +8,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ onSearchClick, activeView }) => {
-  const { currentRole, currentEmployee, switchRole, notifications, dismissNotification } = useApp();
+  const { currentRole, currentEmployee, switchRole, notifications, dismissNotification, theme, toggleTheme } = useApp();
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
   const unreadNotifications = notifications.filter(n => !n.is_read);
@@ -44,6 +44,24 @@ export const Header: React.FC<HeaderProps> = ({ onSearchClick, activeView }) => 
             <option value="Department Head">Department Head</option>
             <option value="Employee">Employee (Staff)</option>
           </select>
+        </div>
+
+        {/* Theme Toggle */}
+        <div 
+          onClick={toggleTheme} 
+          style={{ 
+            cursor: 'pointer', 
+            color: 'var(--text-secondary)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            padding: '0.25rem',
+            borderRadius: '6px',
+            transition: 'all var(--transition-fast)'
+          }}
+          title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+          {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
         </div>
 
         {/* Notifications Icon & Dropdown */}

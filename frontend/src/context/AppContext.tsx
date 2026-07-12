@@ -195,6 +195,14 @@ interface AppContextType {
   notifications: Notification[];
   logs: ActivityLog[];
   history: AssetHistory[];
+  theme: 'dark' | 'light';
+  toggleTheme: () => void;
+  accentColor: string;
+  accentHoverColor: string;
+  bgColor: string;
+  preset: 'default' | 'sakura' | 'odoo';
+  setPreset: (preset: 'default' | 'sakura' | 'odoo') => void;
+  setThemeColors: (accent: string, hover: string, bg: string) => void;
   
   switchRole: (role: 'Admin' | 'Asset Manager' | 'Department Head' | 'Employee') => void;
   registerAsset: (data: Partial<Asset>) => Promise<void>;
@@ -223,6 +231,185 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isLinked = isSupabaseConfigured();
+
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem('assetflow-theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+    return 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('assetflow-theme', theme);
+  }, [theme]);
+
+  const [preset, setPresetState] = useState<'default' | 'sakura' | 'odoo'>(() => {
+    return (localStorage.getItem('assetflow-preset') as any) || 'default';
+  });
+
+  const [accentColor, setAccentColorState] = useState<string>(() => {
+    return localStorage.getItem('assetflow-accent') || '#6366f1';
+  });
+  const [accentHoverColor, setAccentHoverColorState] = useState<string>(() => {
+    return localStorage.getItem('assetflow-accent-hover') || '#4f46e5';
+  });
+  const [bgColor, setBgColorState] = useState<string>(() => {
+    return localStorage.getItem('assetflow-bg') || '#000000';
+  });
+
+  const toggleTheme = () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+
+    const generateTintedBg = (accent: string, currentTheme: 'dark' | 'light') => {
+      if (!accent.startsWith('#') || accent.length !== 7) {
+        return currentTheme === 'dark' ? '#000000' : '#f4f4f5';
+      }
+      let R = parseInt(accent.substring(1, 3), 16);
+      let G = parseInt(accent.substring(3, 5), 16);
+      let B = parseInt(accent.substring(5, 7), 16);
+      
+      if (currentTheme === 'dark') {
+        R = Math.max(2, Math.round(R * 0.05));
+        G = Math.max(2, Math.round(G * 0.05));
+        B = Math.max(3, Math.round(B * 0.05));
+      } else {
+        R = Math.min(255, Math.round(R + (255 - R) * 0.96));
+        G = Math.min(255, Math.round(G + (255 - G) * 0.96));
+        B = Math.min(255, Math.round(B + (255 - B) * 0.96));
+      }
+      
+      const rHex = R.toString(16).padStart(2, '0');
+      const gHex = G.toString(16).padStart(2, '0');
+      const bHex = B.toString(16).padStart(2, '0');
+      return `#${rHex}${gHex}${bHex}`;
+    };
+
+    if (preset === 'sakura') {
+      const bg = nextTheme === 'dark' ? '#120204' : '#fff0f2';
+      setBgColorState(bg);
+    } else if (preset === 'odoo') {
+      const bg = nextTheme === 'dark' ? '#1e081a' : '#f6ebf4';
+      setBgColorState(bg);
+    } else {
+      const newBg = generateTintedBg(accentColor, nextTheme);
+      setBgColorState(newBg);
+    }
+  };
+
+  const setPreset = (selectedPreset: 'default' | 'sakura' | 'odoo') => {
+    setPresetState(selectedPreset);
+    localStorage.setItem('assetflow-preset', selectedPreset);
+    
+    if (selectedPreset === 'sakura') {
+      const bg = theme === 'dark' ? '#120204' : '#fff0f2';
+      setAccentColorState('#ff7e93');
+      setAccentHoverColorState('#be123c');
+      setBgColorState(bg);
+    } else if (selectedPreset === 'odoo') {
+      const bg = theme === 'dark' ? '#1e081a' : '#f6ebf4';
+      setAccentColorState('#714b67');
+      setAccentHoverColorState('#5e3855');
+      setBgColorState(bg);
+    }
+  };
+
+  const setThemeColors = (accent: string, hover: string, bg: string) => {
+    setPresetState('default');
+    localStorage.setItem('assetflow-preset', 'default');
+
+    setAccentColorState(accent);
+    setAccentHoverColorState(hover);
+    setBgColorState(bg);
+    localStorage.setItem('assetflow-accent', accent);
+    localStorage.setItem('assetflow-accent-hover', hover);
+    localStorage.setItem('assetflow-bg', bg);
+  };
+
+  useEffect(() => {
+    const hexToRgba = (hex: string, alpha: number) => {
+      if (!hex.startsWith('#') || hex.length !== 7) return `rgba(99, 102, 241, ${alpha})`;
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    };
+
+    const adjustColorBrightness = (hex: string, percent: number) => {
+      if (!hex.startsWith('#') || hex.length !== 7) return hex;
+      let R = parseInt(hex.substring(1, 3), 16);
+      let G = parseInt(hex.substring(3, 5), 16);
+      let B = parseInt(hex.substring(5, 7), 16);
+
+      R = Math.min(255, Math.max(0, Math.round(R * (100 + percent) / 100)));
+      G = Math.min(255, Math.max(0, Math.round(G * (100 + percent) / 100)));
+      B = Math.min(255, Math.max(0, Math.round(B * (100 + percent) / 100)));
+
+      // If we adjusted a pure black to lighter, enforce baseline
+      if (percent > 0 && R === 0 && G === 0 && B === 0) {
+        R = G = B = Math.round(percent * 2.55);
+      }
+
+      const rHex = R.toString(16).padStart(2, '0');
+      const gHex = G.toString(16).padStart(2, '0');
+      const bHex = B.toString(16).padStart(2, '0');
+
+      return `#${rHex}${gHex}${bHex}`;
+    };
+
+    // Calculate background variants based on dark/light and custom base background
+    let calculatedBgSidebar = '';
+    let calculatedBgCard = '';
+    let calculatedBgCardHover = '';
+    let calculatedBgCardActive = '';
+    let calculatedBorder = '';
+    let calculatedBorderHover = '';
+    let calculatedOverlay = '';
+
+    if (theme === 'dark') {
+      calculatedBgSidebar = adjustColorBrightness(bgColor, 5); 
+      calculatedBgCard = adjustColorBrightness(bgColor, 10); 
+      calculatedBgCardHover = adjustColorBrightness(bgColor, 16); 
+      calculatedBgCardActive = adjustColorBrightness(bgColor, 22); 
+      calculatedBorder = 'rgba(255, 255, 255, 0.08)';
+      calculatedBorderHover = 'rgba(255, 255, 255, 0.16)';
+      calculatedOverlay = 'rgba(0, 0, 0, 0.85)';
+    } else {
+      calculatedBgSidebar = '#ffffff';
+      calculatedBgCard = '#ffffff';
+      calculatedBgCardHover = adjustColorBrightness(bgColor, -3); 
+      calculatedBgCardActive = adjustColorBrightness(bgColor, -8); 
+      calculatedBorder = 'rgba(9, 9, 11, 0.08)';
+      calculatedBorderHover = 'rgba(9, 9, 11, 0.15)';
+      calculatedOverlay = 'rgba(9, 9, 11, 0.4)';
+    }
+
+    const hexToRgbTriplet = (hex: string) => {
+      if (!hex.startsWith('#') || hex.length !== 7) return '99, 102, 241';
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      return `${r}, ${g}, ${b}`;
+    };
+
+    // Set styling variables dynamically on the document root
+    document.documentElement.style.setProperty('--accent', accentColor);
+    document.documentElement.style.setProperty('--accent-rgb', hexToRgbTriplet(accentColor));
+    document.documentElement.style.setProperty('--accent-light', hexToRgba(accentColor, 0.12));
+    document.documentElement.style.setProperty('--accent-hover', accentHoverColor);
+    document.documentElement.style.setProperty('--shadow-glow', `0 0 20px ${hexToRgba(accentColor, 0.12)}`);
+
+    document.documentElement.style.setProperty('--bg-app', bgColor);
+    document.documentElement.style.setProperty('--bg-app-rgb', hexToRgbTriplet(bgColor));
+    document.documentElement.style.setProperty('--bg-sidebar', calculatedBgSidebar);
+    document.documentElement.style.setProperty('--bg-card', calculatedBgCard);
+    document.documentElement.style.setProperty('--bg-card-hover', calculatedBgCardHover);
+    document.documentElement.style.setProperty('--bg-card-active', calculatedBgCardActive);
+    document.documentElement.style.setProperty('--border', calculatedBorder);
+    document.documentElement.style.setProperty('--border-hover', calculatedBorderHover);
+    document.documentElement.style.setProperty('--overlay-bg', calculatedOverlay);
+
+  }, [accentColor, accentHoverColor, bgColor, theme, preset]);
   
   // App Roles & Auth state
   const [currentRole, setCurrentRole] = useState<'Admin' | 'Asset Manager' | 'Department Head' | 'Employee'>('Admin');
@@ -849,7 +1036,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       dismissNotification,
       addCustomDepartment,
       addCustomCategory,
-      promoteEmployee
+      promoteEmployee,
+      theme,
+      toggleTheme,
+      accentColor,
+      accentHoverColor,
+      bgColor,
+      preset,
+      setPreset,
+      setThemeColors
     }}>
       {children}
     </AppContext.Provider>
