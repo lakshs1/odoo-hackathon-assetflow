@@ -164,7 +164,7 @@ body {
 }
 
 /* Enable background sketch and screen color inversion in dark mode */
-[data-theme="dark"].preset-sakura::before {
+[data-theme="dark"] .preset-sakura::before {
   background-image: url('/fuji.png');
   background-color: var(--bg-app);
   background-blend-mode: screen;
@@ -172,47 +172,50 @@ body {
   opacity: 0.85;
 }
 
-/* Odoo Premium light mode: Cover background fully with odoo_bg.png at low watermark opacity */
+/* Odoo Premium light mode: Show original pink/purple wallpaper */
 .preset-odoo::before {
   background-image: url('/odoo_bg.png');
   background-size: cover !important;
   background-position: center !important;
   background-repeat: no-repeat !important;
-  opacity: 0.38 !important; /* Increased to make laptop and odoo text highly visible */
+  opacity: 0.38 !important;
 }
 
-/* Odoo Premium dark mode: Dim the background image watermark to fit dark mode */
-[data-theme="dark"].preset-odoo::before {
+/* Odoo Premium dark mode: Dark purple tinted wallpaper with visible content */
+[data-theme="dark"] .preset-odoo::before {
   background-image: url('/odoo_bg.png');
   background-size: cover !important;
   background-position: center !important;
   background-repeat: no-repeat !important;
-  opacity: 0.28 !important; /* Increased for dark mode visibility */
-  filter: brightness(0.8) contrast(1.2) !important;
+  opacity: 0.5 !important;
+  filter: brightness(0.35) contrast(1.2) saturate(1.5) hue-rotate(-10deg) !important;
 }
 
-/* Odoo Theme Layout Glassmorphism and Variable overrides */
+/* Odoo Theme: Dark purple components in BOTH modes, light purple background in light mode */
 .preset-odoo {
   --bg-app: #f6ebf4 !important;
-  --bg-sidebar: #ffffff !important;
-  --border: rgba(113, 75, 103, 0.12) !important;
-  --border-hover: rgba(113, 75, 103, 0.22) !important;
-}
-
-[data-theme="dark"].preset-odoo {
-  --bg-app: #1e081a !important;
-  --bg-sidebar: #220b1d !important;
-  --bg-card: #2a1125 !important;
-  --bg-card-hover: #33172d !important;
-  --bg-card-active: #3b1c34 !important;
-  --bg-input: #1a0817 !important;
+  --bg-sidebar: #190616 !important;
+  --bg-card: #200c1c !important;
+  --bg-card-hover: #291024 !important;
+  --bg-card-active: #31132a !important;
+  --bg-input: #150512 !important;
+  --bg-column: rgba(255, 255, 255, 0.03) !important;
+  --bg-table-header: rgba(255, 255, 255, 0.04) !important;
+  --bg-calendar-header: rgba(255, 255, 255, 0.04) !important;
+  --bg-shortcut: rgba(255, 255, 255, 0.08) !important;
+  --bg-heatmap-0: rgba(255, 255, 255, 0.03) !important;
   --border: rgba(255, 255, 255, 0.08) !important;
   --border-hover: rgba(255, 255, 255, 0.15) !important;
   --text-primary: #ffffff !important;
   --text-secondary: rgba(255, 255, 255, 0.8) !important;
   --text-muted: rgba(255, 255, 255, 0.5) !important;
-  --glass-bg: rgba(30, 8, 26, 0.55) !important;
+  --glass-bg: rgba(32, 12, 28, 0.6) !important;
   --glass-border: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Odoo dark mode: Override only the app background to deep purple */
+[data-theme="dark"] .preset-odoo {
+  --bg-app: #12030f !important;
 }
 
 /* Odoo preset pillow-shaped button styles */
@@ -222,6 +225,33 @@ body {
 .preset-odoo [type="submit"],
 .preset-odoo [role="button"] {
   border-radius: 9999px !important;
+}
+
+/* Odoo preset sidebar overrides: Dark purple in both light and dark themes */
+.preset-odoo .sidebar {
+  background: #190616 !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+.preset-odoo .sidebar .sidebar-logo {
+  background: linear-gradient(135deg, #ffffff 30%, rgba(255, 255, 255, 0.7) 100%) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.preset-odoo .sidebar .sidebar-item {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.preset-odoo .sidebar .sidebar-item:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+
+.preset-odoo .sidebar .sidebar-item.active {
+  background-color: rgba(113, 75, 103, 0.5) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
 
 [data-theme="light"] .app-container {

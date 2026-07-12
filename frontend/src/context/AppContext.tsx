@@ -289,7 +289,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const bg = nextTheme === 'dark' ? '#120204' : '#fff0f2';
       setBgColorState(bg);
     } else if (preset === 'odoo') {
-      const bg = nextTheme === 'dark' ? '#1e081a' : '#f6ebf4';
+      const bg = nextTheme === 'dark' ? '#12030f' : '#f6ebf4';
       setBgColorState(bg);
     } else {
       const newBg = generateTintedBg(accentColor, nextTheme);
@@ -307,7 +307,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAccentHoverColorState('#be123c');
       setBgColorState(bg);
     } else if (selectedPreset === 'odoo') {
-      const bg = theme === 'dark' ? '#1e081a' : '#f6ebf4';
+      const bg = theme === 'dark' ? '#12030f' : '#f6ebf4';
       setAccentColorState('#714b67');
       setAccentHoverColorState('#5e3855');
       setBgColorState(bg);
